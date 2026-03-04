@@ -24,12 +24,13 @@ func TestFormatMarkdown(t *testing.T) {
 	md := FormatMarkdown(e)
 
 	checks := []string{
-		"# smith2019spring",
-		"## Smith, Ali: Spring",
+		"# Smith, Ali: Spring",
+		"**Key:** smith2019spring",
 		"**Type:** book",
 		"**Year:** 2019",
 		"**Month:** March",
-		"**Keywords:** fiction, British",
+		"## Keywords",
+		"#fiction #british",
 		"| publisher | Penguin |",
 		"## Abstract",
 		"A novel about spring.",
