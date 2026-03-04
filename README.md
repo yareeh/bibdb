@@ -1,5 +1,13 @@
 # bibdb
 
+[![CI](https://github.com/yareeh/bibdb/actions/workflows/ci.yml/badge.svg)](https://github.com/yareeh/bibdb/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/yareeh/bibdb/graph/badge.svg)](https://codecov.io/gh/yareeh/bibdb)
+[![Go](https://img.shields.io/github/go-mod/go-version/yareeh/bibdb)](https://go.dev)
+[![Release](https://img.shields.io/github/v/release/yareeh/bibdb)](https://github.com/yareeh/bibdb/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yareeh/bibdb)](https://goreportcard.com/report/github.com/yareeh/bibdb)
+[![Built for AI Agents](https://img.shields.io/badge/built%20for-AI%20agents-blueviolet)](https://github.com/yareeh/bibdb)
+
 Git-backed BibTeX database manager for CLI-first workflows. Entries are stored as individual `.bib` files in a sharded directory structure within a git repository, keeping your bibliography portable, version-controlled, and syncable across machines.
 
 ## Installation
