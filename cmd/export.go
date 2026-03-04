@@ -23,6 +23,8 @@ var exportCmd = &cobra.Command{
 		}
 
 		store := internal.NewStore(backend.Path)
+		repo := internal.NewRepo(backend.Path)
+		repo.Pull()
 
 		var entries []*internal.Entry
 		if len(args) == 1 {
