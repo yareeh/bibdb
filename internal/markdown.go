@@ -18,12 +18,25 @@ func toTag(s string) string {
 	return "#" + s
 }
 
+// stripBraces removes BibTeX protective braces from display text.
+// "{Scientific}" -> "Scientific", "{{Wikipedia contributors}}" -> "Wikipedia contributors"
+func stripBraces(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '{' || s[i] == '}' {
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 // FormatMarkdown formats an entry as a markdown reference note.
 func FormatMarkdown(e *Entry) string {
 	var b strings.Builder
 
-	author := e.Get("author")
-	title := e.Get("title")
+	author := stripBraces(e.Get("author"))
+	title := stripBraces(e.Get("title"))
 
 	fmt.Fprintf(&b, "# %s: %s\n\n", author, title)
 	if author != "" {
@@ -63,7 +76,7 @@ func FormatMarkdown(e *Entry) string {
 		b.WriteString("| Field | Value |\n")
 		b.WriteString("|-------|-------|\n")
 		for _, f := range tableFields {
-			fmt.Fprintf(&b, "| %s | %s |\n", f.Name, f.Value)
+			fmt.Fprintf(&b, "| %s | %s |\n", f.Name, stripBraces(f.Value))
 		}
 		b.WriteString("\n")
 	}
@@ -81,7 +94,7 @@ func FormatMarkdown(e *Entry) string {
 	}
 
 	if abs := e.Get("abstract"); abs != "" {
-		fmt.Fprintf(&b, "## Abstract\n\n%s\n\n", abs)
+		fmt.Fprintf(&b, "## Abstract\n\n%s\n\n", stripBraces(abs))
 	}
 
 	url := e.Get("url")
