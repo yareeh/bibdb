@@ -35,7 +35,9 @@ var importCmd = &cobra.Command{
 
 		var paths []string
 		var skipped int
-		for _, e := range entries {
+		for i := range entries {
+			internal.ConvertLaTeX(&entries[i])
+			e := entries[i]
 			if store.Exists(e.Key) {
 				skipped++
 				continue
