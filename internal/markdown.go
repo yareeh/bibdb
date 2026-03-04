@@ -5,13 +5,17 @@ import (
 	"strings"
 )
 
-// keywordToTag converts a keyword to a hashtag format.
+// toTag converts a string to a hashtag format.
 // "personal development" -> "#personal-development"
-func keywordToTag(kw string) string {
-	kw = strings.TrimSpace(kw)
-	kw = strings.ToLower(kw)
-	kw = strings.ReplaceAll(kw, " ", "-")
-	return "#" + kw
+// "Hendrix, Jimi" -> "#hendrix-jimi"
+func toTag(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, " ", "-")
+	s = strings.ReplaceAll(s, ",", "")
+	s = strings.ReplaceAll(s, "--", "-")
+	s = strings.TrimRight(s, "-")
+	return "#" + s
 }
 
 // FormatMarkdown formats an entry as a markdown reference note.
@@ -22,6 +26,16 @@ func FormatMarkdown(e *Entry) string {
 	title := e.Get("title")
 
 	fmt.Fprintf(&b, "# %s: %s\n\n", author, title)
+	if author != "" {
+		authors := strings.Split(author, " and ")
+		for i, a := range authors {
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(toTag(a))
+		}
+		b.WriteString("\n\n")
+	}
 	fmt.Fprintf(&b, "**Key:** %s\n", e.Key)
 	fmt.Fprintf(&b, "**Type:** %s\n", e.Type)
 	if y := e.Get("year"); y != "" {
@@ -61,7 +75,7 @@ func FormatMarkdown(e *Entry) string {
 			if i > 0 {
 				b.WriteString(" ")
 			}
-			b.WriteString(keywordToTag(p))
+			b.WriteString(toTag(p))
 		}
 		b.WriteString("\n\n")
 	}

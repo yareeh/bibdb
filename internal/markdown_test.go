@@ -25,6 +25,7 @@ func TestFormatMarkdown(t *testing.T) {
 
 	checks := []string{
 		"# Smith, Ali: Spring",
+		"#smith-ali",
 		"**Key:** smith2019spring",
 		"**Type:** book",
 		"**Year:** 2019",
@@ -39,6 +40,29 @@ func TestFormatMarkdown(t *testing.T) {
 		"```bibtex",
 	}
 
+	for _, want := range checks {
+		if !strings.Contains(md, want) {
+			t.Errorf("missing %q in markdown output:\n%s", want, md)
+		}
+	}
+}
+
+func TestFormatMarkdownMultipleAuthors(t *testing.T) {
+	e := &Entry{
+		Type: "book",
+		Key:  "test2024",
+		Fields: []Field{
+			{Name: "author", Value: "Blas, Javier and Farchy, Jack"},
+			{Name: "title", Value: "The World for Sale"},
+			{Name: "year", Value: "2024"},
+		},
+	}
+
+	md := FormatMarkdown(e)
+
+	checks := []string{
+		"#blas-javier #farchy-jack",
+	}
 	for _, want := range checks {
 		if !strings.Contains(md, want) {
 			t.Errorf("missing %q in markdown output:\n%s", want, md)

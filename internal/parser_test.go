@@ -155,25 +155,24 @@ func TestParseBackslashInValue(t *testing.T) {
 	}
 }
 
-func TestParseRealBibFile(t *testing.T) {
-	data, err := os.ReadFile("../BibTexDB.bib")
+func TestParseSampleBibFile(t *testing.T) {
+	data, err := os.ReadFile("testdata/sample.bib")
 	if err != nil {
-		t.Skip("BibTexDB.bib not found, skipping")
+		t.Fatal(err)
 	}
 	entries, err := Parse(string(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 230 {
-		t.Errorf("expected at least 230 entries, got %d", len(entries))
+	if len(entries) != 7 {
+		t.Errorf("expected 7 entries, got %d", len(entries))
 	}
 
-	// Spot check some entries
 	found := map[string]bool{}
 	for _, e := range entries {
 		found[e.Key] = true
 	}
-	for _, key := range []string{"smith2019spring", "knuth1974structured", "adams2002salmon"} {
+	for _, key := range []string{"smith2019spring", "knuth1974structured", "adams2002salmon", "blas2021worldforsale"} {
 		if !found[key] {
 			t.Errorf("missing entry %q", key)
 		}
