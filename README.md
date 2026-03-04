@@ -80,6 +80,29 @@ backends:
 
 Select backend: `--backend work` flag or `BIBDB_BACKEND=work` env var.
 
+## Connecting to an Existing Remote
+
+To use a bibdb data repo that already exists on a remote (e.g., a colleague's or your own from another machine):
+
+```bash
+# Clone the remote repo
+git clone git@github.com:user/bibdata.git ~/bibdata
+
+# Register it as a backend
+bibdb init ~/bibdata
+```
+
+`bibdb init` detects the existing git repo and data, and registers it as a backend without reinitializing. After this, `bibdb sync` will pull and push to the remote.
+
+You can also add the remote manually to a locally initialized repo:
+
+```bash
+bibdb init ~/bibdata
+cd ~/bibdata
+git remote add origin git@github.com:user/bibdata.git
+git push -u origin main
+```
+
 ## Data Repo Structure
 
 Entries are sharded by first two lowercase characters of the cite key:
