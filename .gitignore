@@ -28,4 +28,4 @@ go.work
 
 # Project
 bibdb
-dist/
+dist/.claude
