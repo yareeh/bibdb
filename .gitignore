@@ -29,3 +29,4 @@ go.work
 # Project
 bibdb
 dist/.claude
+.claude
