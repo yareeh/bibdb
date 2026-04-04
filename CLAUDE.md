@@ -30,3 +30,12 @@ gh release create v0.1.0 --generate-notes
 ```
 
 GoReleaser handles cross-compilation and Homebrew tap publishing.
+
+## Development workflow (TDD)
+
+For every new feature or bug fix:
+1. **Write tests first**
+2. **Implement** the feature
+3. **Lint and format**
+4. **Run tests**
+5. Fix any issues and repeat until clean
