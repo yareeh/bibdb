@@ -15,6 +15,9 @@ func initTestRepo(t *testing.T) *Repo {
 	}
 	r.git("config", "user.email", "test@test.com")
 	r.git("config", "user.name", "Test")
+	// Disable signing so the test commit doesn't hit the user's GPG/SSH agent
+	// (e.g. 1Password), which is unavailable in CI / non-interactive runs.
+	r.git("config", "commit.gpgsign", "false")
 	return r
 }
 

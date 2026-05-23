@@ -3,19 +3,37 @@ package internal
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
-// toTag converts a string to a hashtag format.
-// "personal development" -> "#personal-development"
-// "Hendrix, Jimi" -> "#hendrix-jimi"
+// toTag converts a string to a hashtag format safe for Obsidian.
+//
+// Obsidian accepts only letters, digits, '-', '_', and '/' (for nested tags).
+// Any other punctuation truncates the tag in the rendered note, so we strip
+// it. Spaces become '-' first; '/' is preserved for nesting; runs of '-' are
+// collapsed.
+//
+// "personal development"     -> "#personal-development"
+// "Hendrix, Jimi"            -> "#hendrix-jimi"
+// "children's literature"    -> "#childrens-literature"
+// "AI/ML"                    -> "#ai/ml"
 func toTag(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ToLower(s)
 	s = strings.ReplaceAll(s, " ", "-")
-	s = strings.ReplaceAll(s, ",", "")
-	s = strings.ReplaceAll(s, "--", "-")
-	s = strings.TrimRight(s, "-")
-	return "#" + s
+
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '/' {
+			b.WriteRune(r)
+		}
+	}
+	result := b.String()
+	for strings.Contains(result, "--") {
+		result = strings.ReplaceAll(result, "--", "-")
+	}
+	result = strings.Trim(result, "-")
+	return "#" + result
 }
 
 // stripBraces removes BibTeX protective braces from display text.

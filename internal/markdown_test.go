@@ -103,3 +103,27 @@ func TestFormatMarkdownMultipleAuthors(t *testing.T) {
 		}
 	}
 }
+
+func TestToTagStripsObsidianUnsafeChars(t *testing.T) {
+	// Obsidian tags accept letters, digits, '-', '_', '/'. Any other punctuation
+	// truncates the tag at the bad char when rendered, so toTag must strip them.
+	cases := []struct{ in, want string }{
+		{"children's literature", "#childrens-literature"},
+		{"hope and mortality", "#hope-and-mortality"},
+		{"social sciences", "#social-sciences"},
+		{"Hendrix, Jimi", "#hendrix-jimi"},
+		{"hanna mahlamäki", "#hanna-mahlamäki"},
+		{"C++ programming", "#c-programming"},
+		{"R&D notes", "#rd-notes"},
+		{"AI/ML", "#ai/ml"},
+		{"some.thing.dotted", "#somethingdotted"},
+		{"  leading and trailing  ", "#leading-and-trailing"},
+		{"double--dash", "#double-dash"},
+	}
+	for _, c := range cases {
+		got := toTag(c.in)
+		if got != c.want {
+			t.Errorf("toTag(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
