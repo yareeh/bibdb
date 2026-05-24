@@ -65,7 +65,8 @@ bibdb sync
 | `bibdb search <query> [--field F]` | Search entries (case-insensitive substring) |
 | `bibdb rename <old> <new>` | Rename cite key |
 | `bibdb remove <key> [--force]` | Delete entry |
-| `bibdb export [key] [--format md\|bib] [--output path]` | Export as markdown or .bib |
+| `bibdb export [key] [--format md\|bib] [--output path] [--include-meta]` | Export as markdown or .bib (strips `bibdbversion` unless `--include-meta`) |
+| `bibdb fix [key] [--all] [--rule ID] [--dry-run] [-n N] [-v]` | Apply registered fix rules — see [Rules.md](Rules.md) |
 | `bibdb sync` | Git pull --rebase + push |
 | `bibdb backends` | List configured backends |
 
@@ -127,6 +128,34 @@ bibdata/
 ```
 
 Each `.bib` file contains exactly one BibTeX entry.
+
+## Fix command and entry version metadata
+
+Every entry created or fixed by bibdb carries a `bibdbversion` field
+recording the bibdb release that last touched it. `bibdb fix` walks the
+registered rules and either auto-fixes the entry in place (strip tracking
+params, decode HTML/LaTeX entities, canonicalise month names, …) or surfaces
+issues that need an external repair (missing required fields, keyword-list
+without a top-level category, …). The version stamp lets `fix --all` skip
+entries already covered by their last fix.
+
+```bash
+bibdb fix smith2026foo            # one entry
+bibdb fix --all                   # every entry
+bibdb fix --all --dry-run         # preview only
+bibdb fix --all -n 5 -v           # fix the first 5 affected entries verbosely
+bibdb fix --list-rules            # show registered rules
+```
+
+See [Rules.md](Rules.md) for the rule catalogue. `bibdb export` strips the
+`bibdbversion` field by default; pass `--include-meta` to retain it (useful
+when downstream tools like skyebot's rendered reference files want the
+provenance).
+
+When bibdb gains a feature or fix that changes how a valid entry should look,
+add a corresponding rule to `internal/fixrules/` with `Since = <next
+release>` and regenerate `Rules.md`. Re-running `bibdb fix --all` then
+upgrades every legacy entry.
 
 ## Git Sync
 

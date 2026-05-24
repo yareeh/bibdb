@@ -5,15 +5,18 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	"github.com/yareeh/bibdb/internal"
+	"github.com/yareeh/bibdb/internal/version"
 )
 
 var backendFlag string
 
 var rootCmd = &cobra.Command{
-	Use:   "bibdb",
-	Short: "Git-backed BibTeX database manager",
-	Long:  "bibdb manages BibTeX entries in git-backed repositories with sharded file storage.",
+	Use:     "bibdb",
+	Short:   "Git-backed BibTeX database manager",
+	Long:    "bibdb manages BibTeX entries in git-backed repositories with sharded file storage.",
+	Version: version.Current(),
 }
 
 func Execute() {

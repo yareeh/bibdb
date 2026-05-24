@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yareeh/bibdb/internal"
+	"github.com/yareeh/bibdb/internal/version"
 )
 
 var addType string
@@ -81,6 +82,10 @@ Or use flags:
 		if store.Exists(entry.Key) {
 			return fmt.Errorf("entry %q already exists", entry.Key)
 		}
+
+		// Stamp the entry with the bibdb release that created it, so the
+		// `fix` command can skip rules already satisfied by construction.
+		internal.StampVersion(entry, version.Current())
 
 		if err := store.Write(entry); err != nil {
 			return err

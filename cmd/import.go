@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yareeh/bibdb/internal"
+	"github.com/yareeh/bibdb/internal/version"
 )
 
 var importCmd = &cobra.Command{
@@ -33,6 +34,7 @@ var importCmd = &cobra.Command{
 
 		repo.Pull()
 
+		current := version.Current()
 		var paths []string
 		var skipped int
 		for i := range entries {
@@ -42,6 +44,7 @@ var importCmd = &cobra.Command{
 				skipped++
 				continue
 			}
+			internal.StampVersion(&e, current)
 			if err := store.Write(&e); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: writing %s: %v\n", e.Key, err)
 				continue

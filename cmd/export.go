@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/yareeh/bibdb/internal"
@@ -11,6 +12,7 @@ import (
 
 var exportFormat string
 var exportOutput string
+var exportIncludeMeta bool
 
 var exportCmd = &cobra.Command{
 	Use:   "export [key]",
@@ -40,6 +42,10 @@ var exportCmd = &cobra.Command{
 			}
 		}
 
+		if !exportIncludeMeta {
+			entries = stripMetaFields(entries)
+		}
+
 		switch exportFormat {
 		case "md":
 			return exportMarkdown(entries)
@@ -49,6 +55,25 @@ var exportCmd = &cobra.Command{
 			return fmt.Errorf("unknown format %q (use md or bib)", exportFormat)
 		}
 	},
+}
+
+// stripMetaFields returns copies of entries with the bibdbversion bookkeeping
+// field removed, so external consumers of the BibTeX (e.g. LaTeX builds, other
+// bibtex tools) don't see bibdb-internal metadata. The original entries are
+// not mutated.
+func stripMetaFields(entries []*internal.Entry) []*internal.Entry {
+	out := make([]*internal.Entry, len(entries))
+	for i, e := range entries {
+		cp := &internal.Entry{Type: e.Type, Key: e.Key}
+		for _, f := range e.Fields {
+			if strings.EqualFold(f.Name, internal.VersionFieldName) {
+				continue
+			}
+			cp.Fields = append(cp.Fields, f)
+		}
+		out[i] = cp
+	}
+	return out
 }
 
 func exportMarkdown(entries []*internal.Entry) error {
@@ -91,5 +116,6 @@ func exportBib(entries []*internal.Entry) error {
 func init() {
 	exportCmd.Flags().StringVar(&exportFormat, "format", "bib", "output format (md or bib)")
 	exportCmd.Flags().StringVar(&exportOutput, "output", "", "output directory (md) or file (bib)")
+	exportCmd.Flags().BoolVar(&exportIncludeMeta, "include-meta", false, "preserve bibdb-internal fields (bibdbversion) in the export")
 	rootCmd.AddCommand(exportCmd)
 }

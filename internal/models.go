@@ -63,3 +63,26 @@ func (e *Entry) ShardKey() string {
 	}
 	return key[:2]
 }
+
+// VersionFieldName is the BibTeX field name that records which bibdb release
+// last created or fixed an entry. It is a single lowercase word for maximum
+// parser compatibility.
+const VersionFieldName = "bibdbversion"
+
+// StampVersion writes (or updates in place) the bibdbversion metadata field
+// on an entry. The field is the bookkeeping signal the fix command uses to
+// skip entries that are already up to date.
+func StampVersion(e *Entry, v string) {
+	e.Set(VersionFieldName, v)
+}
+
+// EntryVersion returns the stored bibdbversion, or "0.0.0" when missing — so
+// legacy entries (created before the field existed) are treated as needing
+// every rule.
+func EntryVersion(e *Entry) string {
+	v := e.Get(VersionFieldName)
+	if v == "" {
+		return "0.0.0"
+	}
+	return v
+}
