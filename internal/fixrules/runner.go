@@ -24,6 +24,9 @@ type RunReport struct {
 	EntryKey string
 	// Changed is true when any AutoFix rule mutated the entry.
 	Changed bool
+	// Reported is true when any rule produced a NeedsExternal message —
+	// useful to the CLI for deciding whether to print the entry header.
+	Reported bool
 	// PerRule is the result of every rule that actually ran (skipped rules
 	// are not present).
 	PerRule map[string]Result
@@ -59,6 +62,9 @@ func Run(e *internal.Entry, opts RunOpts) RunReport {
 		report.PerRule[r.ID] = res
 		if res.Changed {
 			report.Changed = true
+		}
+		if len(res.NeedsExternal) > 0 {
+			report.Reported = true
 		}
 		// Track the highest Since among rules that ran — that's what the
 		// entry is "certified" up to after this run.

@@ -24,6 +24,7 @@ var (
 	fixMinVersion string
 	fixLimit      int
 	fixVerbose    bool
+	fixQuiet      bool
 )
 
 var fixCmd = &cobra.Command{
@@ -58,7 +59,8 @@ func init() {
 	fixCmd.Flags().BoolVar(&fixReportOnly, "report-only", false, "skip AutoFix rules; only surface issues")
 	fixCmd.Flags().StringVar(&fixMinVersion, "min-version", "", "override per-entry skip threshold (e.g. 0.0.0 to force re-run)")
 	fixCmd.Flags().IntVarP(&fixLimit, "limit", "n", 0, "stop after fixing this many entries (0 = no limit)")
-	fixCmd.Flags().BoolVarP(&fixVerbose, "verbose", "v", false, "print each fixed entry to stdout as it proceeds")
+	fixCmd.Flags().BoolVarP(&fixVerbose, "verbose", "v", false, "print each scanned entry (including report-only and no-change) to stdout")
+	fixCmd.Flags().BoolVarP(&fixQuiet, "quiet", "q", false, "suppress the end-of-run report summary")
 	rootCmd.AddCommand(fixCmd)
 }
 
@@ -101,6 +103,12 @@ func runFix(cmd *cobra.Command, args []string) error {
 	}
 
 	current := version.Current()
+	// In default-sweep mode (no filters), every entry the runner inspects
+	// gets certified up to `current` even when only Report rules fired.
+	// This silences future `fix --all` of the same release; new releases'
+	// rules still fire because their Since exceeds the stored stamp.
+	fullSweep := !fixReportOnly && len(fixRules) == 0 && fixMinVersion == ""
+
 	var changedPaths []string
 	var reportLines []string
 	changedCount := 0
@@ -108,34 +116,45 @@ func runFix(cmd *cobra.Command, args []string) error {
 	for _, e := range entries {
 		rep := fixrules.Run(e, opts)
 
-		// Print verbose progress before the potential mutation so the user
-		// sees what happened on this entry whether or not we persist it.
-		if fixVerbose || rep.Changed || hasReports(rep) {
-			emitProgress(os.Stdout, e.Key, rep, fixDryRun, fixVerbose)
-		}
+		emitProgress(os.Stdout, e.Key, rep, fixDryRun, fixVerbose)
 		for _, res := range rep.PerRule {
 			for _, msg := range res.NeedsExternal {
 				reportLines = append(reportLines, fmt.Sprintf("%s: %s", e.Key, msg))
 			}
 		}
 
-		if !rep.Changed {
+		// Decide whether to certify the entry's stamp.
+		// - fullSweep: certify to `current` even if nothing was Changed, so
+		//   the entry is marked "looked at by v<current>" and won't be
+		//   rescanned by the same rule set on the next run.
+		// - filtered run that changed something: certify to the highest
+		//   Since among rules that actually ran (rep.StampVersion).
+		// - filtered run that changed nothing: don't certify (the entry
+		//   hasn't been seen by every rule, so we can't claim coverage).
+		stamp := ""
+		switch {
+		case fullSweep:
+			if !version.GTE(internal.EntryVersion(e), current) {
+				stamp = current
+			}
+		case rep.Changed:
+			stamp = rep.StampVersion
+		}
+
+		needsWrite := rep.Changed || stamp != ""
+		if !needsWrite {
 			continue
 		}
-		changedCount++
-
-		// Stamp the entry up to the highest Since among rules that ran on it.
-		// For a full default run (no --rule filter, no --report-only, no
-		// --min-version override) this is effectively `version.Current()`.
-		stamp := rep.StampVersion
-		if !fixReportOnly && len(fixRules) == 0 && fixMinVersion == "" {
-			stamp = current
+		if rep.Changed {
+			changedCount++
 		}
 		if stamp != "" {
 			internal.StampVersion(e, stamp)
 		}
-
 		if fixDryRun {
+			if fixLimit > 0 && changedCount >= fixLimit {
+				break
+			}
 			continue
 		}
 		if err := store.Write(e); err != nil {
@@ -149,8 +168,8 @@ func runFix(cmd *cobra.Command, args []string) error {
 	}
 
 	// Surface report-severity findings together at the end so they don't
-	// drown the changed-entry progress output.
-	if len(reportLines) > 0 {
+	// drown the changed-entry progress output. Suppress when --quiet.
+	if len(reportLines) > 0 && !fixQuiet {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "Issues that need external repair:")
 		sort.Strings(reportLines)
@@ -173,39 +192,42 @@ func runFix(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func hasReports(rep fixrules.RunReport) bool {
-	for _, res := range rep.PerRule {
-		if len(res.NeedsExternal) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
+// emitProgress writes per-entry progress to w. The shape is:
+//
+//   - Changed entry:               "fix <key>"  +  indented messages
+//   - Report-only entry (-v):      "report <key>" + indented NeedsExternal lines
+//   - Report-only entry (no -v):   silent — end-of-run summary still lists it
+//   - No rules fired (-v):         "scan <key> (no changes)"
+//   - No rules fired (no -v):      silent
 func emitProgress(w *os.File, key string, rep fixrules.RunReport, dryRun, verbose bool) {
-	var lines []string
-	for id, res := range rep.PerRule {
-		if !res.Changed && len(res.NeedsExternal) == 0 && !verbose {
-			continue
-		}
-		for _, msg := range res.Messages {
-			lines = append(lines, fmt.Sprintf("    [%s] %s", id, msg))
-		}
-		for _, msg := range res.NeedsExternal {
-			lines = append(lines, fmt.Sprintf("    [%s] (report) %s", id, msg))
-		}
-	}
-	if len(lines) == 0 && !verbose {
-		return
-	}
 	prefix := "fix"
 	if dryRun {
 		prefix = "would-fix"
 	}
-	if rep.Changed {
+
+	switch {
+	case rep.Changed:
 		fmt.Fprintf(w, "%s %s\n", prefix, key)
-	} else if verbose {
+	case rep.Reported && verbose:
+		fmt.Fprintf(w, "report %s\n", key)
+	case verbose:
 		fmt.Fprintf(w, "scan %s (no changes)\n", key)
+	default:
+		return
+	}
+
+	var lines []string
+	for id, res := range rep.PerRule {
+		for _, msg := range res.Messages {
+			lines = append(lines, fmt.Sprintf("    [%s] %s", id, msg))
+		}
+		// Only inline the report lines when the user asked for verbose
+		// output. Otherwise the end-of-run summary is the single source.
+		if verbose {
+			for _, msg := range res.NeedsExternal {
+				lines = append(lines, fmt.Sprintf("    [%s] (report) %s", id, msg))
+			}
+		}
 	}
 	sort.Strings(lines)
 	for _, l := range lines {

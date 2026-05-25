@@ -39,6 +39,7 @@ func resetFixFlags() {
 	fixMinVersion = ""
 	fixLimit = 0
 	fixVerbose = false
+	fixQuiet = false
 }
 
 // dirtyEntry returns an entry with a tracking-param URL and an apostrophe in
@@ -262,6 +263,98 @@ func TestFixSecondRunIsNoop(t *testing.T) {
 	if v := internal.EntryVersion(after); v != stampedV {
 		t.Errorf("second run changed bibdbversion from %q to %q (expected no change)", stampedV, v)
 	}
+}
+
+// reportOnlyEntry has issues only Report rules can flag (no apostrophes,
+// no tracking params, no LaTeX/HTML to decode) — but missing abstract and
+// no top-level keyword category.
+func reportOnlyEntry(key string) *internal.Entry {
+	return &internal.Entry{
+		Type: "misc", Key: key,
+		Fields: []internal.Field{
+			{Name: "author", Value: "Doe, J."},
+			{Name: "title", Value: "T"},
+			{Name: "year", Value: "2026"},
+			{Name: "month", Value: "May"},
+			{Name: "keywords", Value: "foo, bar"}, // no top-level category
+			// abstract missing
+		},
+	}
+}
+
+func TestFixStampsReportOnlyEntriesInFullSweep(t *testing.T) {
+	// Bug observed in v1.4.0: entries that only triggered Report rules were
+	// never stamped, so every `fix --all` rerun spammed the same reports.
+	resetFixFlags()
+	store, _ := setupTestBackend(t, []*internal.Entry{reportOnlyEntry("only_reports")})
+
+	if err := runCmd("fix", "--all"); err != nil {
+		t.Fatalf("fix: %v", err)
+	}
+	got, _ := store.Read("only_reports")
+	if v := internal.EntryVersion(got); v == "0.0.0" {
+		t.Fatalf("expected report-only entry to be stamped after a full sweep, got %q", v)
+	}
+}
+
+func TestFixSecondFullSweepDoesNotRerunReports(t *testing.T) {
+	resetFixFlags()
+	setupTestBackend(t, []*internal.Entry{reportOnlyEntry("a")})
+
+	// First sweep — stamps and emits reports.
+	out1 := captureStderr(t, func() {
+		if err := runCmd("fix", "--all"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(out1, "Issues that need external repair") {
+		t.Fatalf("first sweep should surface reports, got:\n%s", out1)
+	}
+
+	// Second sweep — entry already certified, no report should fire.
+	resetFixFlags()
+	out2 := captureStderr(t, func() {
+		if err := runCmd("fix", "--all"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if strings.Contains(out2, "Issues that need external repair") {
+		t.Errorf("second sweep should not re-emit reports for stamped entries, got:\n%s", out2)
+	}
+}
+
+func TestFixFilteredRunDoesNotFullStampUnchangedEntry(t *testing.T) {
+	// --rule restricts the run; an unchanged entry must NOT be marked covered
+	// against rules that weren't executed.
+	resetFixFlags()
+	store, _ := setupTestBackend(t, []*internal.Entry{reportOnlyEntry("a")})
+
+	if err := runCmd("fix", "a", "--rule", "tracking-params"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := store.Read("a")
+	if v := internal.EntryVersion(got); v != "0.0.0" {
+		t.Errorf("filtered run should not certify entry up to current version, got bibdbversion=%q", v)
+	}
+}
+
+// captureStderr is the stderr twin of captureStdout — runFix emits the
+// "Issues that need external repair:" summary on stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+	fn()
+	w.Close()
+	os.Stderr = old
+	return <-done
 }
 
 func must(e *internal.Entry, err error) *internal.Entry {
