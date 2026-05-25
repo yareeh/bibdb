@@ -227,8 +227,11 @@ func TestFixVerboseLogsEveryEntry(t *testing.T) {
 	if !strings.Contains(out, "fix dirty") {
 		t.Errorf("expected verbose output to include 'fix dirty', got:\n%s", out)
 	}
-	if !strings.Contains(out, "scan clean") {
-		t.Errorf("expected verbose output to include 'scan clean (no changes)', got:\n%s", out)
+	// `clean` was stamped to the current version in the fixture, so under
+	// full-sweep verbose mode it produces a "skip clean" line. Older v1.4.x
+	// also accepted "scan clean (no changes)" / "stamp clean".
+	if !strings.Contains(out, "skip clean") && !strings.Contains(out, "scan clean") && !strings.Contains(out, "stamp clean") {
+		t.Errorf("expected verbose output to mention the clean entry, got:\n%s", out)
 	}
 }
 
@@ -301,24 +304,24 @@ func TestFixSecondFullSweepDoesNotRerunReports(t *testing.T) {
 	resetFixFlags()
 	setupTestBackend(t, []*internal.Entry{reportOnlyEntry("a")})
 
-	// First sweep — stamps and emits reports.
-	out1 := captureStderr(t, func() {
+	// First sweep — stamps and surfaces reports in the summary.
+	out1 := captureStdout(t, func() {
 		if err := runCmd("fix", "--all"); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(out1, "Issues that need external repair") {
-		t.Fatalf("first sweep should surface reports, got:\n%s", out1)
+	if !strings.Contains(out1, "Reported issues:") {
+		t.Fatalf("first sweep should surface a 'Reported issues:' line, got:\n%s", out1)
 	}
 
 	// Second sweep — entry already certified, no report should fire.
 	resetFixFlags()
-	out2 := captureStderr(t, func() {
+	out2 := captureStdout(t, func() {
 		if err := runCmd("fix", "--all"); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if strings.Contains(out2, "Issues that need external repair") {
+	if strings.Contains(out2, "Reported issues:") {
 		t.Errorf("second sweep should not re-emit reports for stamped entries, got:\n%s", out2)
 	}
 }

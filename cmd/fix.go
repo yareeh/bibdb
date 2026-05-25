@@ -60,7 +60,7 @@ func init() {
 	fixCmd.Flags().StringVar(&fixMinVersion, "min-version", "", "override per-entry skip threshold (e.g. 0.0.0 to force re-run)")
 	fixCmd.Flags().IntVarP(&fixLimit, "limit", "n", 0, "stop after touching this many entries (mutation or stamp; 0 = no limit)")
 	fixCmd.Flags().BoolVarP(&fixVerbose, "verbose", "v", false, "print each scanned entry (including report-only and no-change) to stdout")
-	fixCmd.Flags().BoolVarP(&fixQuiet, "quiet", "q", false, "suppress the end-of-run report summary")
+	fixCmd.Flags().BoolVarP(&fixQuiet, "quiet", "q", false, "suppress per-entry output (only the end-of-run summary is printed)")
 	rootCmd.AddCommand(fixCmd)
 }
 
@@ -110,18 +110,21 @@ func runFix(cmd *cobra.Command, args []string) error {
 	fullSweep := !fixReportOnly && len(fixRules) == 0 && fixMinVersion == ""
 
 	var changedPaths []string
-	var reportLines []string
-	changedCount := 0
-	touchedCount := 0 // entries the run actually wrote (content mutation OR stamp)
+	stats := runStats{total: len(entries)}
 
 	for _, e := range entries {
+		stats.iterated++
 		rep := fixrules.Run(e, opts)
 
-		emitProgress(os.Stdout, e.Key, rep, fixDryRun, fixVerbose)
-		for _, res := range rep.PerRule {
-			for _, msg := range res.NeedsExternal {
-				reportLines = append(reportLines, fmt.Sprintf("%s: %s", e.Key, msg))
-			}
+		if len(rep.PerRule) == 0 {
+			// Every rule's Since is already covered by the entry's stamp.
+			stats.upToDate++
+		}
+		if rep.Changed {
+			stats.autoFixed++
+		}
+		if rep.Reported {
+			stats.reported++
 		}
 
 		// Decide whether to certify the entry's stamp.
@@ -143,16 +146,23 @@ func runFix(cmd *cobra.Command, args []string) error {
 		}
 
 		needsWrite := rep.Changed || stamp != ""
+		// Emit per-entry output (header + indented rule detail) before any
+		// mutation so the user sees keys as the run progresses. --quiet
+		// suppresses these lines; the end-of-run summary still prints.
+		if !fixQuiet {
+			emitProgress(os.Stdout, e.Key, rep, stamp, fixDryRun, fixVerbose)
+		}
+
 		if !needsWrite {
 			continue
-		}
-		if rep.Changed {
-			changedCount++
 		}
 		if stamp != "" {
 			internal.StampVersion(e, stamp)
 		}
-		touchedCount++
+		if !rep.Changed && stamp != "" {
+			stats.stampedClean++
+		}
+		stats.touched++
 
 		if !fixDryRun {
 			if err := store.Write(e); err != nil {
@@ -164,71 +174,116 @@ func runFix(cmd *cobra.Command, args []string) error {
 		// --limit counts every entry the run touched (mutation OR stamp).
 		// A stamp-only sweep through a stale store would otherwise scan
 		// the whole database silently before the limit could trigger.
-		if fixLimit > 0 && touchedCount >= fixLimit {
+		if fixLimit > 0 && stats.touched >= fixLimit {
+			stats.stoppedAtLimit = true
 			break
 		}
 	}
 
-	// Surface report-severity findings together at the end so they don't
-	// drown the changed-entry progress output. Suppress when --quiet.
-	if len(reportLines) > 0 && !fixQuiet {
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Issues that need external repair:")
-		sort.Strings(reportLines)
-		for _, line := range reportLines {
-			fmt.Fprintln(os.Stderr, "  "+line)
-		}
-	}
-
-	if fixDryRun {
-		fmt.Printf("Dry run: %d entr%s would change.\n", changedCount, pluralY(changedCount))
-		return nil
-	}
-	if len(changedPaths) > 0 {
+	if !fixDryRun && len(changedPaths) > 0 {
 		msg := commitMessage(changedPaths)
 		if err := repo.SyncMutation(changedPaths, msg); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: git sync: %v\n", err)
 		}
 	}
-	fmt.Printf("Fixed %d entr%s.\n", changedCount, pluralY(changedCount))
+
+	stats.print(os.Stdout, fixDryRun, fixLimit)
 	return nil
 }
 
-// emitProgress writes per-entry progress to w. The shape is:
-//
-//   - Changed entry:               "fix <key>"  +  indented messages
-//   - Report-only entry (-v):      "report <key>" + indented NeedsExternal lines
-//   - Report-only entry (no -v):   silent — end-of-run summary still lists it
-//   - No rules fired (-v):         "scan <key> (no changes)"
-//   - No rules fired (no -v):      silent
-func emitProgress(w *os.File, key string, rep fixrules.RunReport, dryRun, verbose bool) {
-	prefix := "fix"
-	if dryRun {
-		prefix = "would-fix"
-	}
+// runStats accumulates per-entry outcomes so the run can finish with a
+// useful summary rather than a single "Fixed N entries" line.
+type runStats struct {
+	total          int  // entries selected for this run
+	iterated       int  // entries actually visited (= total unless --limit hit)
+	upToDate       int  // no rules ran on this entry — already covered
+	touched        int  // file written (content mutation or stamp only)
+	autoFixed      int  // at least one AutoFix rule mutated content
+	reported       int  // at least one Report rule surfaced an issue
+	stampedClean   int  // touched purely to apply a version stamp, no mutation
+	stoppedAtLimit bool // --limit reached, iteration was cut short
+}
 
-	switch {
-	case rep.Changed:
-		fmt.Fprintf(w, "%s %s\n", prefix, key)
-	case rep.Reported && verbose:
-		fmt.Fprintf(w, "report %s\n", key)
-	case verbose:
-		fmt.Fprintf(w, "scan %s (no changes)\n", key)
-	default:
+func (s runStats) remaining() int {
+	r := s.total - s.iterated
+	if r < 0 {
+		return 0
+	}
+	return r
+}
+
+// print writes the end-of-run summary. Four core numbers (up-to-date /
+// processed / fixed / unprocessed) plus a reported-issues line when
+// non-zero. "Processed" = entry was touched (mutation or stamp).
+func (s runStats) print(w *os.File, dryRun bool, limit int) {
+	if s.iterated == 0 && s.total == 0 {
+		fmt.Fprintln(w, "No entries selected.")
 		return
 	}
+	if dryRun {
+		fmt.Fprintln(w, "\nDry run — no entries were written.")
+	} else {
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "  Already up to date: %d\n", s.upToDate)
+	fmt.Fprintf(w, "  Processed:          %d\n", s.touched)
+	fmt.Fprintf(w, "  Fixed (content):    %d\n", s.autoFixed)
+	if s.reported > 0 {
+		fmt.Fprintf(w, "  Reported issues:    %d\n", s.reported)
+	}
+	fmt.Fprintf(w, "  Unprocessed:        %d", s.remaining())
+	if s.stoppedAtLimit {
+		fmt.Fprintf(w, "  (--limit %d reached)", limit)
+	}
+	fmt.Fprintln(w)
+}
 
+// emitProgress writes one line per entry the run acted on, plus indented
+// rule detail. Default output only includes Fixed entries — the inline
+// stream then matches "what was fixed" 1:1 with the summary's Fixed count.
+// -v adds report/stamp/skip lines for full visibility.
+//
+//   - Changed:                       "fix <key>"    + indented [rule] messages
+//   - Reported (no Changed) + -v:    "report <key>" + indented [rule] (report) messages
+//   - Stamping-only + -v:            "stamp <key>"
+//   - No rules fired AND -v:         "skip <key>"
+func emitProgress(w *os.File, key string, rep fixrules.RunReport, stamp string, dryRun, verbose bool) {
+	header := ""
+	showRuleDetail := false
+	switch {
+	case rep.Changed:
+		if dryRun {
+			header = "would-fix"
+		} else {
+			header = "fix"
+		}
+		showRuleDetail = true
+	case rep.Reported && verbose:
+		header = "report"
+		showRuleDetail = true
+	case stamp != "" && verbose:
+		if dryRun {
+			header = "would-stamp"
+		} else {
+			header = "stamp"
+		}
+	case verbose:
+		header = "skip"
+	}
+	if header == "" {
+		return
+	}
+	fmt.Fprintf(w, "%s %s\n", header, key)
+	if !showRuleDetail {
+		return
+	}
 	var lines []string
 	for id, res := range rep.PerRule {
 		for _, msg := range res.Messages {
 			lines = append(lines, fmt.Sprintf("    [%s] %s", id, msg))
 		}
-		// Only inline the report lines when the user asked for verbose
-		// output. Otherwise the end-of-run summary is the single source.
-		if verbose {
-			for _, msg := range res.NeedsExternal {
-				lines = append(lines, fmt.Sprintf("    [%s] (report) %s", id, msg))
-			}
+		for _, msg := range res.NeedsExternal {
+			lines = append(lines, fmt.Sprintf("    [%s] (report) %s", id, msg))
 		}
 	}
 	sort.Strings(lines)
