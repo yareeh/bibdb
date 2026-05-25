@@ -58,7 +58,7 @@ func init() {
 	fixCmd.Flags().BoolVar(&fixDryRun, "dry-run", false, "apply rules in memory without writing entries")
 	fixCmd.Flags().BoolVar(&fixReportOnly, "report-only", false, "skip AutoFix rules; only surface issues")
 	fixCmd.Flags().StringVar(&fixMinVersion, "min-version", "", "override per-entry skip threshold (e.g. 0.0.0 to force re-run)")
-	fixCmd.Flags().IntVarP(&fixLimit, "limit", "n", 0, "stop after fixing this many entries (0 = no limit)")
+	fixCmd.Flags().IntVarP(&fixLimit, "limit", "n", 0, "stop after touching this many entries (mutation or stamp; 0 = no limit)")
 	fixCmd.Flags().BoolVarP(&fixVerbose, "verbose", "v", false, "print each scanned entry (including report-only and no-change) to stdout")
 	fixCmd.Flags().BoolVarP(&fixQuiet, "quiet", "q", false, "suppress the end-of-run report summary")
 	rootCmd.AddCommand(fixCmd)
@@ -112,6 +112,7 @@ func runFix(cmd *cobra.Command, args []string) error {
 	var changedPaths []string
 	var reportLines []string
 	changedCount := 0
+	touchedCount := 0 // entries the run actually wrote (content mutation OR stamp)
 
 	for _, e := range entries {
 		rep := fixrules.Run(e, opts)
@@ -151,18 +152,19 @@ func runFix(cmd *cobra.Command, args []string) error {
 		if stamp != "" {
 			internal.StampVersion(e, stamp)
 		}
-		if fixDryRun {
-			if fixLimit > 0 && changedCount >= fixLimit {
-				break
-			}
-			continue
-		}
-		if err := store.Write(e); err != nil {
-			return fmt.Errorf("writing %s: %w", e.Key, err)
-		}
-		changedPaths = append(changedPaths, store.RelPath(e.Key))
+		touchedCount++
 
-		if fixLimit > 0 && changedCount >= fixLimit {
+		if !fixDryRun {
+			if err := store.Write(e); err != nil {
+				return fmt.Errorf("writing %s: %w", e.Key, err)
+			}
+			changedPaths = append(changedPaths, store.RelPath(e.Key))
+		}
+
+		// --limit counts every entry the run touched (mutation OR stamp).
+		// A stamp-only sweep through a stale store would otherwise scan
+		// the whole database silently before the limit could trigger.
+		if fixLimit > 0 && touchedCount >= fixLimit {
 			break
 		}
 	}

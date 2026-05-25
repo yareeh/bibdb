@@ -323,6 +323,34 @@ func TestFixSecondFullSweepDoesNotRerunReports(t *testing.T) {
 	}
 }
 
+func TestFixLimitCapsStampingNotJustAutoFixes(t *testing.T) {
+	// Bug observed in v1.4.1: `--limit 1` only broke after the 1st AutoFix
+	// mutation. When no AutoFix could fire (e.g. the data was already
+	// auto-fixed) but stamping still happened on every iterated entry, the
+	// limit never triggered and the full database silently got stamped.
+	// v1.4.2 counts every touch (mutation or stamp) toward the limit.
+	resetFixFlags()
+	// Three entries that only Report-rule against — no AutoFix can fire.
+	store, _ := setupTestBackend(t, []*internal.Entry{
+		reportOnlyEntry("a"), reportOnlyEntry("b"), reportOnlyEntry("c"),
+	})
+
+	if err := runCmd("fix", "--all", "--limit", "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	stamped := 0
+	for _, k := range []string{"a", "b", "c"} {
+		got, _ := store.Read(k)
+		if internal.EntryVersion(got) != "0.0.0" {
+			stamped++
+		}
+	}
+	if stamped != 1 {
+		t.Errorf("--limit 1 should have stamped exactly 1 entry, got %d", stamped)
+	}
+}
+
 func TestFixFilteredRunDoesNotFullStampUnchangedEntry(t *testing.T) {
 	// --rule restricts the run; an unchanged entry must NOT be marked covered
 	// against rules that weren't executed.
