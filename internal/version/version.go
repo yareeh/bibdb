@@ -11,7 +11,7 @@ import (
 // Constant is the version baked into the binary at release time. It is the
 // fallback used when runtime/debug doesn't know the module version (e.g.
 // `go run .` or local builds without a tag). Bump this on every release.
-const Constant = "1.4.3"
+const Constant = "1.4.4"
 
 // Current returns the active bibdb version, preferring the module version
 // reported by runtime/debug (set by `go install github.com/yareeh/bibdb@vX.Y.Z`)

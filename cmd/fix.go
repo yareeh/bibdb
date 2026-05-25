@@ -128,16 +128,18 @@ func runFix(cmd *cobra.Command, args []string) error {
 		}
 
 		// Decide whether to certify the entry's stamp.
-		// - fullSweep: certify to `current` even if nothing was Changed, so
-		//   the entry is marked "looked at by v<current>" and won't be
-		//   rescanned by the same rule set on the next run.
+		// - fullSweep AND at least one rule fired: certify to `current`,
+		//   silencing future runs of the same release. If no rule fired
+		//   the entry's existing stamp already covers everything; bumping
+		//   it just to match the binary version causes pointless write
+		//   churn on patch releases that add no rules.
 		// - filtered run that changed something: certify to the highest
 		//   Since among rules that actually ran (rep.StampVersion).
 		// - filtered run that changed nothing: don't certify (the entry
 		//   hasn't been seen by every rule, so we can't claim coverage).
 		stamp := ""
 		switch {
-		case fullSweep:
+		case fullSweep && len(rep.PerRule) > 0:
 			if !version.GTE(internal.EntryVersion(e), current) {
 				stamp = current
 			}

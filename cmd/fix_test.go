@@ -326,6 +326,38 @@ func TestFixSecondFullSweepDoesNotRerunReports(t *testing.T) {
 	}
 }
 
+func TestFixNoChurnOnPatchReleaseWithoutNewRules(t *testing.T) {
+	// Bug observed in v1.4.3: an entry already stamped to 1.4.1 was
+	// re-stamped to 1.4.3 even though no new rules were introduced
+	// between those releases — needless write churn and a confusing
+	// "Already up to date: N, Processed: N" summary.
+	// v1.4.4 only stamps when at least one rule actually fires.
+	resetFixFlags()
+	clean := &internal.Entry{
+		Type: "misc", Key: "already_stamped",
+		Fields: []internal.Field{
+			{Name: "author", Value: "X"},
+			{Name: "title", Value: "T"},
+			{Name: "year", Value: "2026"},
+			{Name: "month", Value: "May"},
+			{Name: "keywords", Value: "literature, foo"},
+			{Name: "abstract", Value: "A."},
+			// Stamp ≥ every rule's Since — no rule should fire.
+			{Name: "bibdbversion", Value: "1.4.0"},
+		},
+	}
+	store, _ := setupTestBackend(t, []*internal.Entry{clean})
+
+	before := internal.EntryVersion(must(store.Read("already_stamped")))
+	if err := runCmd("fix", "--all"); err != nil {
+		t.Fatal(err)
+	}
+	after := internal.EntryVersion(must(store.Read("already_stamped")))
+	if before != after {
+		t.Errorf("entry already covered by all rules should not be re-stamped; was %q now %q", before, after)
+	}
+}
+
 func TestFixLimitCapsStampingNotJustAutoFixes(t *testing.T) {
 	// Bug observed in v1.4.1: `--limit 1` only broke after the 1st AutoFix
 	// mutation. When no AutoFix could fire (e.g. the data was already
