@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yareeh/bibdb/internal"
+	"github.com/yareeh/bibdb/internal/vocab"
 )
 
 var exportFormat string
@@ -22,6 +23,9 @@ var exportCmd = &cobra.Command{
 		backend, err := resolveBackend()
 		if err != nil {
 			return err
+		}
+		if err := vocab.LoadActive(backend.Path); err != nil {
+			return fmt.Errorf("loading taxonomy: %w", err)
 		}
 
 		store := internal.NewStore(backend.Path)

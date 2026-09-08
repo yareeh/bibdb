@@ -10,6 +10,7 @@ Regenerate with `bibdb fix --list-rules --markdown > Rules.md`. A unit test
 |---|---|---|---|
 | `key-format` | 1.4.0 | report | Citation key matches ^[a-z][a-z0-9_]*$ — lowercase, alphanumeric and underscores only, leading letter. |
 | `keywords-charset` | 1.4.0 | auto-fix | Strip Obsidian-unsafe punctuation from individual keywords (apostrophes, periods, ampersands, parentheses, …). |
+| `keywords-vocab` | 1.5.0 | auto-fix | Normalize keywords to their canonical form via the taxonomy (synonym → prefLabel) and remove duplicates. |
 | `newspaper-iso-date` | 1.4.0 | report | Newspaper @article entries carry an ISO date (YYYY-MM-DD) in the number field. |
 | `required-fields` | 1.4.0 | report | author, title, year, month, keywords, and abstract must all be present and non-empty. |
 | `top-level-keyword` | 1.4.0 | report | Keywords include at least one top-level category: computer science, philosophy, psychology, religion, social sciences, language, pure science, technology, arts, recreation, literature, history, geography. |

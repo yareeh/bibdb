@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/yareeh/bibdb/internal/vocab"
 )
 
 // toTag converts a string to a hashtag format safe for Obsidian.
@@ -101,12 +103,25 @@ func FormatMarkdown(e *Entry) string {
 
 	if kw := e.Get("keywords"); kw != "" {
 		b.WriteString("## Keywords\n\n")
-		parts := strings.Split(kw, ",")
-		for i, p := range parts {
-			if i > 0 {
+		v := vocab.Active()
+		first := true
+		for _, p := range strings.Split(kw, ",") {
+			if strings.TrimSpace(p) == "" {
+				continue
+			}
+			if !first {
 				b.WriteString(" ")
 			}
-			b.WriteString(toTag(p))
+			first = false
+			// With a taxonomy loaded, entity facets get a "<facet>/" prefix so
+			// places, people, orgs and genres become nested Obsidian tags
+			// (#place/iran) and stay out of the topic tag tree. Without one,
+			// the keyword is tagged verbatim (pre-taxonomy behavior).
+			if v != nil {
+				b.WriteString(toTag(v.TagPath(p)))
+			} else {
+				b.WriteString(toTag(p))
+			}
 		}
 		b.WriteString("\n\n")
 	}

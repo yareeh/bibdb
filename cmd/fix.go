@@ -12,6 +12,7 @@ import (
 	"github.com/yareeh/bibdb/internal"
 	"github.com/yareeh/bibdb/internal/fixrules"
 	"github.com/yareeh/bibdb/internal/version"
+	"github.com/yareeh/bibdb/internal/vocab"
 )
 
 var (
@@ -78,6 +79,9 @@ func runFix(cmd *cobra.Command, args []string) error {
 	backend, err := resolveBackend()
 	if err != nil {
 		return err
+	}
+	if err := vocab.LoadActive(backend.Path); err != nil {
+		return fmt.Errorf("loading taxonomy: %w", err)
 	}
 	store := internal.NewStore(backend.Path)
 	repo := internal.NewRepo(backend.Path)
