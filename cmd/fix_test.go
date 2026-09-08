@@ -342,8 +342,9 @@ func TestFixNoChurnOnPatchReleaseWithoutNewRules(t *testing.T) {
 			{Name: "month", Value: "May"},
 			{Name: "keywords", Value: "literature, foo"},
 			{Name: "abstract", Value: "A."},
-			// Stamp ≥ every rule's Since — no rule should fire.
-			{Name: "bibdbversion", Value: "1.4.0"},
+			// Stamp ≥ every rule's Since — no rule should fire. Must track the
+			// highest rule Since (keywords-vocab is 1.5.0).
+			{Name: "bibdbversion", Value: "1.5.0"},
 		},
 	}
 	store, _ := setupTestBackend(t, []*internal.Entry{clean})
