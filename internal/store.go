@@ -21,13 +21,7 @@ func (s *Store) entriesPath() string {
 }
 
 func (s *Store) entryPath(key string) string {
-	shard := strings.ToLower(key)
-	if len(shard) < 2 {
-		shard = shard + strings.Repeat("_", 2-len(shard))
-	} else {
-		shard = shard[:2]
-	}
-	return filepath.Join(s.entriesPath(), shard, key+".bib")
+	return filepath.Join(s.entriesPath(), Shard(key), key+".bib")
 }
 
 // RelPath returns the path relative to the data repo root.

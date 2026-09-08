@@ -57,3 +57,34 @@ func TestEntryVersionReturnsStored(t *testing.T) {
 		t.Errorf("expected 1.4.0, got %q", got)
 	}
 }
+
+func TestValidateKeyFormat(t *testing.T) {
+	valid := []string{"smith2024", "a", "jager2026foo", "x_y_2"}
+	for _, k := range valid {
+		if err := ValidateKeyFormat(k); err != nil {
+			t.Errorf("ValidateKeyFormat(%q) = %v, want nil", k, err)
+		}
+	}
+	invalid := []string{"", "Smith2024", "jäger2026", "2024smith", "a-b", "töyra"}
+	for _, k := range invalid {
+		if err := ValidateKeyFormat(k); err == nil {
+			t.Errorf("ValidateKeyFormat(%q) = nil, want error", k)
+		}
+	}
+}
+
+func TestShardIsRuneSafe(t *testing.T) {
+	cases := map[string]string{
+		"smith2024": "sm",
+		"McCarthy":  "mc", // lowercased
+		"a":         "a_", // padded
+		"":          "__",
+		"jäger2026": "jä", // rune-based: valid UTF-8, not a split byte
+		"töyra":     "tö",
+	}
+	for in, want := range cases {
+		if got := Shard(in); got != want {
+			t.Errorf("Shard(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -55,13 +56,41 @@ func ValidateKey(key string) error {
 	return nil
 }
 
-// ShardKey returns the first 2 lowercase characters of the cite key.
-func (e *Entry) ShardKey() string {
-	key := strings.ToLower(e.Key)
-	if len(key) < 2 {
-		return key
+// CiteKeyRe is the canonical cite-key format: lowercase ASCII letters, digits
+// and underscores, starting with a letter. It is the single definition shared
+// by the key-format fix rule and the write-time enforcement below.
+var CiteKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+// ValidateKeyFormat enforces CiteKeyRe. It is stricter than ValidateKey (which
+// only rejects filesystem-hostile characters) and is applied when creating or
+// renaming entries, so a non-ASCII key — which would otherwise slice into an
+// invalid, uncheckoutable multibyte shard directory — can never be persisted.
+func ValidateKeyFormat(key string) error {
+	if !CiteKeyRe.MatchString(key) {
+		return fmt.Errorf("invalid cite key %q: must match %s (lowercase ASCII letters, digits and underscore; leading letter)", key, CiteKeyRe.String())
 	}
-	return key[:2]
+	return nil
+}
+
+// Shard returns the storage shard for a key: its first two runes, lowercased,
+// padded with underscores for very short keys. Rune-based rather than
+// byte-based so a stray multibyte key can never produce an invalid directory
+// name (e.g. "jäger" → "jä", never a lone 0xC3 byte).
+func Shard(key string) string {
+	r := []rune(strings.ToLower(key))
+	switch {
+	case len(r) == 0:
+		return "__"
+	case len(r) < 2:
+		return string(r) + strings.Repeat("_", 2-len(r))
+	default:
+		return string(r[:2])
+	}
+}
+
+// ShardKey returns the storage shard for this entry's key.
+func (e *Entry) ShardKey() string {
+	return Shard(e.Key)
 }
 
 // VersionFieldName is the BibTeX field name that records which bibdb release

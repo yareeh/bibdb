@@ -2,12 +2,9 @@ package fixrules
 
 import (
 	"fmt"
-	"regexp"
 
 	"github.com/yareeh/bibdb/internal"
 )
-
-var citeKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 func init() {
 	Register(Rule{
@@ -16,7 +13,7 @@ func init() {
 		Severity:    Report,
 		Description: "Citation key matches ^[a-z][a-z0-9_]*$ — lowercase, alphanumeric and underscores only, leading letter.",
 		Apply: func(e *internal.Entry) Result {
-			if citeKeyRe.MatchString(e.Key) {
+			if internal.CiteKeyRe.MatchString(e.Key) {
 				return Result{}
 			}
 			return Result{

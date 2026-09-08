@@ -79,6 +79,10 @@ Or use flags:
 			}
 		}
 
+		if err := internal.ValidateKeyFormat(entry.Key); err != nil {
+			return err
+		}
+
 		if store.Exists(entry.Key) {
 			return fmt.Errorf("entry %q already exists", entry.Key)
 		}

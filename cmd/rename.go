@@ -19,6 +19,9 @@ var renameCmd = &cobra.Command{
 		}
 
 		oldKey, newKey := args[0], args[1]
+		if err := internal.ValidateKeyFormat(newKey); err != nil {
+			return err
+		}
 		store := internal.NewStore(backend.Path)
 		repo := internal.NewRepo(backend.Path)
 
