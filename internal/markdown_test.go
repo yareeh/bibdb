@@ -27,11 +27,11 @@ func TestFormatMarkdown(t *testing.T) {
 
 	checks := []string{
 		"# Smith, Ali: Spring",
-		"#smith-ali",
 		"**Key:** smith2019spring",
 		"**Type:** book",
 		"**Year:** 2019",
 		"**Month:** March",
+		"#person/ali-smith",
 		"## Keywords",
 		"#fiction #british",
 		"| publisher | Penguin |",
@@ -97,7 +97,7 @@ func TestFormatMarkdownMultipleAuthors(t *testing.T) {
 	md := FormatMarkdown(e)
 
 	checks := []string{
-		"#blas-javier #farchy-jack",
+		"#person/javier-blas #person/jack-farchy",
 	}
 	for _, want := range checks {
 		if !strings.Contains(md, want) {
@@ -196,5 +196,36 @@ concepts:
 	// Empty and whitespace-only inputs yield no tags.
 	if tags := KeywordTags(v, " , ,"); len(tags) != 0 {
 		t.Errorf("expected no tags, got %v", tags)
+	}
+}
+
+func TestAuthorTag(t *testing.T) {
+	// Curated: Donald Trump is a person concept; author "Trump, Donald" resolves.
+	v, err := vocab.Parse([]byte(`
+scheme:
+  facets: [top, person, org]
+  defaultFacet: topic
+concepts:
+  - {id: donald-trump, prefLabel: Donald Trump, facet: person, altLabel: [Trump]}
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	cases := []struct {
+		author string
+		vocab  *vocab.Vocabulary
+		want   string
+	}{
+		{"Hendrix, Jimi", nil, "#person/jimi-hendrix"},   // comma → person, reordered
+		{"Blas, Javier", nil, "#person/javier-blas"},
+		{"Le Monde", nil, "#le-monde"},                    // no comma → flat (likely org)
+		{"Helsingin Sanomat", nil, "#helsingin-sanomat"},  // org byline stays flat
+		{"Trump, Donald", v, "#person/donald-trump"},      // curated → canonical
+		{"", nil, ""},
+	}
+	for _, c := range cases {
+		if got := authorTag(c.vocab, c.author); got != c.want {
+			t.Errorf("authorTag(%q) = %q, want %q", c.author, got, c.want)
+		}
 	}
 }

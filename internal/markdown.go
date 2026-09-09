@@ -67,6 +67,41 @@ func KeywordTags(v *vocab.Vocabulary, keywords string) []string {
 	return tags
 }
 
+// authorTag renders one BibTeX author name into a tag. BibTeX stores authors
+// as "Family, Given"; we reorder to "Given Family" so the slug reads naturally
+// and matches the person-concept style (#person/jimi-hendrix). A curated author
+// resolves through the vocabulary to its canonical facet (person or org). A
+// comma-form name is unambiguously personal, so it gets the #person/ facet;
+// a comma-less author (often an organization byline like "Le Monde") keeps a
+// flat tag rather than being mislabeled a person.
+func authorTag(v *vocab.Vocabulary, author string) string {
+	name := strings.TrimSpace(author)
+	if name == "" {
+		return ""
+	}
+	hasComma := strings.Contains(name, ",")
+	if i := strings.Index(name, ","); i >= 0 {
+		family := strings.TrimSpace(name[:i])
+		given := strings.TrimSpace(name[i+1:])
+		if family != "" && given != "" {
+			name = given + " " + family
+		}
+	}
+	if v != nil {
+		if _, ok := v.Lookup(name); ok {
+			return toTag(v.TagPath(name)) // curated → canonical facet tag
+		}
+	}
+	slug := toTag(name)
+	if slug == "#" {
+		return ""
+	}
+	if hasComma {
+		return "#person/" + slug[1:]
+	}
+	return slug
+}
+
 // stripBraces removes BibTeX protective braces from display text.
 // "{Scientific}" -> "Scientific", "{{Wikipedia contributors}}" -> "Wikipedia contributors"
 func stripBraces(s string) string {
@@ -89,14 +124,21 @@ func FormatMarkdown(e *Entry) string {
 
 	fmt.Fprintf(&b, "# %s: %s\n\n", author, title)
 	if author != "" {
-		authors := strings.Split(author, " and ")
-		for i, a := range authors {
-			if i > 0 {
-				b.WriteString(" ")
+		v := vocab.Active()
+		var atags []string
+		seen := make(map[string]bool)
+		for _, a := range strings.Split(author, " and ") {
+			tag := authorTag(v, a)
+			if tag == "" || seen[tag] {
+				continue
 			}
-			b.WriteString(toTag(a))
+			seen[tag] = true
+			atags = append(atags, tag)
 		}
-		b.WriteString("\n\n")
+		if len(atags) > 0 {
+			b.WriteString(strings.Join(atags, " "))
+			b.WriteString("\n\n")
+		}
 	}
 	fmt.Fprintf(&b, "**Key:** %s\n", e.Key)
 	fmt.Fprintf(&b, "**Type:** %s\n", e.Type)
