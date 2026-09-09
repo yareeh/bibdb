@@ -24,6 +24,7 @@ skye skills.
   bibdb vocab list                 # every canonical term, with facet + parent
   bibdb vocab list --facet top     # just the top-level categories, one per line
   bibdb vocab canonical LLM        # resolve a synonym → canonical prefLabel
+  bibdb vocab tags "AI, Iran"      # faceted Obsidian hashtag run (#place/iran …)
   bibdb vocab check smith2026foo   # lint one entry's keywords against the scheme
   bibdb vocab tree                 # print the broader/narrower hierarchy`,
 }
@@ -109,6 +110,30 @@ to normalize LLM-generated keywords before 'bibdb add'.
 		}
 		joined, _, _ := v.NormalizeKeywords(strings.Join(args, " "))
 		fmt.Println(joined)
+		return nil
+	},
+}
+
+var vocabTagsCmd = &cobra.Command{
+	Use:   "tags <keywords>",
+	Short: "Print the faceted, de-duplicated Obsidian hashtag run for a comma-separated keywords string",
+	Long: `Reads a comma-separated keywords string (pass it as one quoted argument) and
+prints the space-separated Obsidian hashtag run exactly as 'bibdb export' would
+render it: entity facets get a '<facet>/' prefix (#place/iran, #person/mr-t),
+duplicates that collapse to the same tag are dropped. Intended for callers
+(skyebot /z, /food, /sport) so every note tags identically to the References
+notes, from this single source of truth.
+
+  bibdb vocab tags "social sciences, Mr T, Lawrence Tureaud, Iran"
+  → #social-sciences #person/mr-t #place/iran`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		v, _, err := loadVocabOrErr()
+		if err != nil {
+			return err
+		}
+		tags := internal.KeywordTags(v, strings.Join(args, " "))
+		fmt.Println(strings.Join(tags, " "))
 		return nil
 	},
 }
@@ -220,6 +245,6 @@ var vocabTreeCmd = &cobra.Command{
 
 func init() {
 	vocabListCmd.Flags().StringVar(&vocabFacet, "facet", "", "only terms in this facet (top|topic|place|person|org|genre|time)")
-	vocabCmd.AddCommand(vocabListCmd, vocabCanonicalCmd, vocabNormalizeCmd, vocabCheckCmd, vocabTreeCmd)
+	vocabCmd.AddCommand(vocabListCmd, vocabCanonicalCmd, vocabNormalizeCmd, vocabTagsCmd, vocabCheckCmd, vocabTreeCmd)
 	rootCmd.AddCommand(vocabCmd)
 }

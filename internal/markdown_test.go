@@ -165,3 +165,36 @@ concepts:
 		t.Errorf("distinct keyword should still be tagged:\n%s", md)
 	}
 }
+
+func TestKeywordTags(t *testing.T) {
+	yaml := `
+scheme:
+  facets: [top, topic, place, person]
+  defaultFacet: topic
+concepts:
+  - {id: social-sciences, prefLabel: social sciences, facet: top}
+  - {id: iran, prefLabel: Iran, facet: place}
+  - {id: mr-t, prefLabel: Mr T, facet: person, altLabel: [Lawrence Tureaud, BA Baracus]}
+`
+	v, err := vocab.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("parse vocab: %v", err)
+	}
+
+	got := KeywordTags(v, "social sciences, Mr T, Lawrence Tureaud, Iran, some unknown thing")
+	want := []string{"#social-sciences", "#person/mr-t", "#place/iran", "#some-unknown-thing"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("KeywordTags = %v, want %v", got, want)
+	}
+
+	// Without a vocabulary, keywords are tagged verbatim (still deduped).
+	got = KeywordTags(nil, "Fiction, fiction, British")
+	if strings.Join(got, " ") != "#fiction #british" {
+		t.Errorf("KeywordTags(nil) = %v, want [#fiction #british]", got)
+	}
+
+	// Empty and whitespace-only inputs yield no tags.
+	if tags := KeywordTags(v, " , ,"); len(tags) != 0 {
+		t.Errorf("expected no tags, got %v", tags)
+	}
+}

@@ -38,6 +38,35 @@ func toTag(s string) string {
 	return "#" + result
 }
 
+// KeywordTags renders a comma-separated keywords string into the ordered,
+// de-duplicated Obsidian hashtag run. With a vocabulary, entity facets get a
+// "<facet>/" prefix (#place/iran) so places, people, orgs and genres become
+// nested tags and stay out of the topic tag tree; without one, each keyword is
+// tagged verbatim (pre-taxonomy behavior). Distinct keywords that normalize to
+// the same tag (e.g. "Mr T" and "Lawrence Tureaud" → #person/mr-t) collapse to
+// one, first occurrence kept. Shared by markdown export and `bibdb vocab tags`.
+func KeywordTags(v *vocab.Vocabulary, keywords string) []string {
+	var tags []string
+	seen := make(map[string]bool)
+	for _, p := range strings.Split(keywords, ",") {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		var tag string
+		if v != nil {
+			tag = toTag(v.TagPath(p))
+		} else {
+			tag = toTag(p)
+		}
+		if tag == "#" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
 // stripBraces removes BibTeX protective braces from display text.
 // "{Scientific}" -> "Scientific", "{{Wikipedia contributors}}" -> "Wikipedia contributors"
 func stripBraces(s string) string {
@@ -102,33 +131,7 @@ func FormatMarkdown(e *Entry) string {
 	}
 
 	if kw := e.Get("keywords"); kw != "" {
-		v := vocab.Active()
-		var tags []string
-		seen := make(map[string]bool)
-		for _, p := range strings.Split(kw, ",") {
-			if strings.TrimSpace(p) == "" {
-				continue
-			}
-			// With a taxonomy loaded, entity facets get a "<facet>/" prefix so
-			// places, people, orgs and genres become nested Obsidian tags
-			// (#place/iran) and stay out of the topic tag tree. Without one,
-			// the keyword is tagged verbatim (pre-taxonomy behavior).
-			var tag string
-			if v != nil {
-				tag = toTag(v.TagPath(p))
-			} else {
-				tag = toTag(p)
-			}
-			// Dedup: distinct keywords can normalize to the same tag — e.g.
-			// "Mr T", "Lawrence Tureaud" and "BA Baracus" all map to
-			// #person/mr-t. Keep the first occurrence only.
-			if tag == "#" || seen[tag] {
-				continue
-			}
-			seen[tag] = true
-			tags = append(tags, tag)
-		}
-		if len(tags) > 0 {
+		if tags := KeywordTags(vocab.Active(), kw); len(tags) > 0 {
 			b.WriteString("## Keywords\n\n")
 			b.WriteString(strings.Join(tags, " "))
 			b.WriteString("\n\n")
