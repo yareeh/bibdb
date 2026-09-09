@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -12,7 +13,12 @@ import (
 	"github.com/yareeh/bibdb/internal/vocab"
 )
 
-var vocabFacet string
+var (
+	vocabFacet            string
+	vocabCoverageMinCount int
+	vocabCoverageLimit    int
+	vocabCoverageJSON     bool
+)
 
 var vocabCmd = &cobra.Command{
 	Use:   "vocab",
@@ -25,6 +31,7 @@ skye skills.
   bibdb vocab list --facet top     # just the top-level categories, one per line
   bibdb vocab canonical LLM        # resolve a synonym → canonical prefLabel
   bibdb vocab tags "AI, Iran"      # faceted Obsidian hashtag run (#place/iran …)
+  bibdb vocab coverage             # uncurated keywords by frequency (curation TODO)
   bibdb vocab check smith2026foo   # lint one entry's keywords against the scheme
   bibdb vocab tree                 # print the broader/narrower hierarchy`,
 }
@@ -138,6 +145,102 @@ notes, from this single source of truth.
 	},
 }
 
+// coverageStat is one uncurated keyword and where it appears.
+type coverageStat struct {
+	Term     string   `json:"term"`
+	Count    int      `json:"count"`
+	Examples []string `json:"examples"`
+}
+
+// scanCoverage tallies keywords not in the taxonomy across entries, counting
+// each term once per entry, and returns those used in >= minCount entries,
+// sorted by count desc then term asc.
+func scanCoverage(v *vocab.Vocabulary, entries []*internal.Entry, minCount int) []*coverageStat {
+	counts := map[string]*coverageStat{}
+	for _, e := range entries {
+		kw := e.Get("keywords")
+		if kw == "" {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, p := range strings.Split(kw, ",") {
+			t := strings.TrimSpace(p)
+			if t == "" {
+				continue
+			}
+			if _, known := v.Canonical(t); known {
+				continue // already in the taxonomy
+			}
+			key := strings.ToLower(t)
+			if seen[key] {
+				continue // count each term once per entry
+			}
+			seen[key] = true
+			s := counts[key]
+			if s == nil {
+				s = &coverageStat{Term: t}
+				counts[key] = s
+			}
+			s.Count++
+			if len(s.Examples) < 3 {
+				s.Examples = append(s.Examples, e.Key)
+			}
+		}
+	}
+	stats := make([]*coverageStat, 0, len(counts))
+	for _, s := range counts {
+		if s.Count >= minCount {
+			stats = append(stats, s)
+		}
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].Count != stats[j].Count {
+			return stats[i].Count > stats[j].Count
+		}
+		return stats[i].Term < stats[j].Term
+	})
+	return stats
+}
+
+var vocabCoverageCmd = &cobra.Command{
+	Use:   "coverage",
+	Short: "Report keywords used across entries that are NOT in the taxonomy (curation candidates)",
+	Long: `Scan every entry's keywords and tally those not in taxonomy.yaml — the
+uncurated terms that fall through to bare #topic tags. Ranked by how many
+entries use each, so the highest-impact concepts to curate surface first. One
+scan covers both existing items and any new ones since the last curation pass.
+
+  bibdb vocab coverage                 # terms in >=2 entries, top 50
+  bibdb vocab coverage --min-count 1   # everything, including one-offs
+  bibdb vocab coverage --json          # machine-readable {term,count,examples}`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		v, backend, err := loadVocabOrErr()
+		if err != nil {
+			return err
+		}
+		entries, err := internal.NewStore(backend.Path).List()
+		if err != nil {
+			return err
+		}
+		stats := scanCoverage(v, entries, vocabCoverageMinCount)
+		if vocabCoverageLimit > 0 && len(stats) > vocabCoverageLimit {
+			stats = stats[:vocabCoverageLimit]
+		}
+		if vocabCoverageJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(stats)
+		}
+		fmt.Printf("%d uncurated term(s) in >=%d entries (of %d scanned):\n",
+			len(stats), vocabCoverageMinCount, len(entries))
+		for _, s := range stats {
+			fmt.Printf("%5d  %s\n", s.Count, s.Term)
+		}
+		return nil
+	},
+}
+
 var vocabCheckCmd = &cobra.Command{
 	Use:   "check <key>",
 	Short: "Lint one entry's keywords against the taxonomy",
@@ -245,6 +348,9 @@ var vocabTreeCmd = &cobra.Command{
 
 func init() {
 	vocabListCmd.Flags().StringVar(&vocabFacet, "facet", "", "only terms in this facet (top|topic|place|person|org|genre|time)")
-	vocabCmd.AddCommand(vocabListCmd, vocabCanonicalCmd, vocabNormalizeCmd, vocabTagsCmd, vocabCheckCmd, vocabTreeCmd)
+	vocabCoverageCmd.Flags().IntVar(&vocabCoverageMinCount, "min-count", 2, "only terms used in at least this many entries")
+	vocabCoverageCmd.Flags().IntVar(&vocabCoverageLimit, "limit", 50, "cap the number of terms printed (0 = no cap)")
+	vocabCoverageCmd.Flags().BoolVar(&vocabCoverageJSON, "json", false, "emit JSON ({term,count,examples}) instead of a table")
+	vocabCmd.AddCommand(vocabListCmd, vocabCanonicalCmd, vocabNormalizeCmd, vocabTagsCmd, vocabCoverageCmd, vocabCheckCmd, vocabTreeCmd)
 	rootCmd.AddCommand(vocabCmd)
 }
