@@ -67,7 +67,7 @@ func TestFormatMarkdownStripsBraces(t *testing.T) {
 	// Rendered text should have no braces
 	mustContain := []string{
 		"# Wikipedia contributors: The Scientific Status of Learning Styles",
-		"#wikipedia-contributors",
+		"#org/wikipedia-contributors",
 		"| howpublished | Wikipedia, The Free Encyclopedia |",
 		"Theories of learning styles.",
 	}
@@ -200,32 +200,52 @@ concepts:
 }
 
 func TestAuthorTag(t *testing.T) {
-	// Curated: Donald Trump is a person concept; author "Trump, Donald" resolves.
 	v, err := vocab.Parse([]byte(`
 scheme:
   facets: [top, person, org]
   defaultFacet: topic
 concepts:
   - {id: donald-trump, prefLabel: Donald Trump, facet: person, altLabel: [Trump]}
+  - {id: anthropic, prefLabel: Anthropic, facet: org}
 `))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	cases := []struct {
+		name   string
 		author string
 		vocab  *vocab.Vocabulary
 		want   string
 	}{
-		{"Hendrix, Jimi", nil, "#person/jimi-hendrix"},   // comma → person, reordered
-		{"Blas, Javier", nil, "#person/javier-blas"},
-		{"Le Monde", nil, "#le-monde"},                    // no comma → flat (likely org)
-		{"Helsingin Sanomat", nil, "#helsingin-sanomat"},  // org byline stays flat
-		{"Trump, Donald", v, "#person/donald-trump"},      // curated → canonical
-		{"", nil, ""},
+		// --- persons: comma form, reordered "Family, Given" -> "Given Family" ---
+		{"comma person", "Hendrix, Jimi", nil, "#person/jimi-hendrix"},
+		{"comma person 2", "Blas, Javier", nil, "#person/javier-blas"},
+		// --- persons: no-comma "Given Family" (the 866-author majority) ---
+		{"nocomma person", "Simon Hattenstone", nil, "#person/simon-hattenstone"},
+		{"nocomma person 2", "Eshe Nelson", nil, "#person/eshe-nelson"},
+		{"three-part name", "Juha-Pekka Raeste", nil, "#person/juha-pekka-raeste"},
+		// --- FAILURE FIXED: "Lehti" is a Finnish surname, not the outlet word ---
+		{"surname Lehti not org", "Anu-Elina Lehti", nil, "#person/anu-elina-lehti"},
+		// --- orgs: outlet/corporate bylines -> #org/ (not #person/) ---
+		{"org WSJ", "Wall Street Journal", nil, "#org/wall-street-journal"},
+		{"org Guardian", "The Guardian", nil, "#org/the-guardian"},
+		{"org Le Monde", "Le Monde", nil, "#org/le-monde"},
+		{"org Bloomberg News", "Bloomberg News", nil, "#org/bloomberg-news"},
+		{"org Big Think", "Big Think", nil, "#org/big-think"},
+		{"org HS", "Helsingin Sanomat", nil, "#org/helsingin-sanomat"},
+		{"org Wikipedia", "Wikipedia contributors", nil, "#org/wikipedia-contributors"},
+		// --- junk bylines -> no tag ---
+		{"junk parenthetical", "(No specific author listed in the provided text)", nil, ""},
+		{"empty", "", nil, ""},
+		// --- single word, uncurated, no signal -> flat (can't tell person vs org) ---
+		{"single unknown", "Pyhimys", nil, "#pyhimys"},
+		// --- curated resolves to canonical facet regardless of form ---
+		{"curated person comma", "Trump, Donald", v, "#person/donald-trump"},
+		{"curated org", "Anthropic", v, "#org/anthropic"},
 	}
 	for _, c := range cases {
 		if got := authorTag(c.vocab, c.author); got != c.want {
-			t.Errorf("authorTag(%q) = %q, want %q", c.author, got, c.want)
+			t.Errorf("%s: authorTag(%q) = %q, want %q", c.name, c.author, got, c.want)
 		}
 	}
 }

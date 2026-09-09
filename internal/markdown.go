@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -67,39 +68,57 @@ func KeywordTags(v *vocab.Vocabulary, keywords string) []string {
 	return tags
 }
 
-// authorTag renders one BibTeX author name into a tag. BibTeX stores authors
-// as "Family, Given"; we reorder to "Given Family" so the slug reads naturally
-// and matches the person-concept style (#person/jimi-hendrix). A curated author
-// resolves through the vocabulary to its canonical facet (person or org). A
-// comma-form name is unambiguously personal, so it gets the #person/ facet;
-// a comma-less author (often an organization byline like "Le Monde") keeps a
-// flat tag rather than being mislabeled a person.
+// authorOrgRe matches outlet / corporate signal words in a byline, so an
+// organization-as-author (news outlets, wire services, institutions) is faceted
+// #org/ rather than mislabeled a person. Deliberately excludes role words
+// (editor, staff, reporter) and surnames that collide with outlet words (e.g.
+// the Finnish surname "Lehti") — those are handled as persons.
+var authorOrgRe = regexp.MustCompile(`(?i)\b(times|news|post|press|media|agency|university|institute|sanomat|uutiset|monde|bloomberg|reuters|guardian|bbc|cnn|nbc|vox|axios|politico|magazine|journal|newsroom|alphaville|substack|wikipedia|encyclopedia|wire|ministry|department|council|foundation|association|committee|company|corp|inc|ltd|llc|studios?|productions?|records)\b|wall\s+street|big\s+think|prof\s+g|\bft\b`)
+
+// authorJunkRe matches non-byline noise ("(No specific author listed…)",
+// strings with digits or parentheses) that should not become a tag at all.
+var authorJunkRe = regexp.MustCompile(`(?i)[(\d]|^no |listed|provided|unknown|specific author`)
+
+// authorTag renders one BibTeX author name into a facet tag. BibTeX stores
+// authors as "Family, Given"; we reorder to "Given Family" so the slug reads
+// naturally and matches the person-concept style (#person/jimi-hendrix). A
+// curated author resolves through the vocabulary to its canonical facet.
+// Otherwise: an outlet/corporate byline → #org/; a comma-form name or a
+// multi-word "Given Family" → #person/; a bare single word we can't classify
+// stays a flat tag; junk yields no tag.
 func authorTag(v *vocab.Vocabulary, author string) string {
 	name := strings.TrimSpace(author)
-	if name == "" {
+	if name == "" || authorJunkRe.MatchString(name) {
 		return ""
 	}
 	hasComma := strings.Contains(name, ",")
+	display := name
 	if i := strings.Index(name, ","); i >= 0 {
 		family := strings.TrimSpace(name[:i])
 		given := strings.TrimSpace(name[i+1:])
 		if family != "" && given != "" {
-			name = given + " " + family
+			display = given + " " + family
 		}
 	}
 	if v != nil {
-		if _, ok := v.Lookup(name); ok {
-			return toTag(v.TagPath(name)) // curated → canonical facet tag
+		if _, ok := v.Lookup(display); ok {
+			if t := toTag(v.TagPath(display)); t != "#" {
+				return t // curated → canonical facet tag
+			}
 		}
 	}
-	slug := toTag(name)
+	slug := toTag(display)
 	if slug == "#" {
 		return ""
 	}
-	if hasComma {
-		return "#person/" + slug[1:]
+	body := slug[1:]
+	if authorOrgRe.MatchString(name) {
+		return "#org/" + body
 	}
-	return slug
+	if hasComma || len(strings.Fields(display)) >= 2 {
+		return "#person/" + body
+	}
+	return slug // single-word, uncurated, no signal → flat
 }
 
 // stripBraces removes BibTeX protective braces from display text.
