@@ -347,3 +347,38 @@ concepts:
 		t.Errorf("repeated org should dedup to one tag, got %d:\n%s", n, md)
 	}
 }
+
+func TestEntityLinkNames(t *testing.T) {
+	v, err := vocab.Parse([]byte(`
+scheme:
+  facets: [top, person, org]
+  defaultFacet: topic
+concepts:
+  - {id: donald-trump, prefLabel: Donald Trump, facet: person, altLabel: [Trump]}
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	e := &Entry{
+		Type: "article",
+		Key:  "x",
+		Fields: []Field{
+			{Name: "author", Value: "Trump, Donald and (No specific author listed)"},
+			{Name: "journal", Value: "The Guardian"},
+			{Name: "publisher", Value: "The Guardian"}, // dup with journal → collapsed
+		},
+	}
+	got := EntityLinkNames(v, e)
+	want := []string{"Donald Trump", "The Guardian"} // junk byline skipped, dup collapsed
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("EntityLinkNames = %v, want %v", got, want)
+	}
+	// Names must match the [[link]] text used in the note (so stubs resolve).
+	md := FormatMarkdown(func() *Entry { vocab.SetActive(v); return e }())
+	vocab.SetActive(nil)
+	for _, n := range got {
+		if !strings.Contains(md, "[["+n+"]]") {
+			t.Errorf("EntityLinkNames %q not present as [[link]] in note:\n%s", n, md)
+		}
+	}
+}

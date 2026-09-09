@@ -14,6 +14,7 @@ import (
 var exportFormat string
 var exportOutput string
 var exportIncludeMeta bool
+var exportEntities bool
 
 var exportCmd = &cobra.Command{
 	Use:   "export [key]",
@@ -97,6 +98,49 @@ func exportMarkdown(entries []*internal.Entry) error {
 	}
 
 	fmt.Printf("Exported %d entries to %s\n", len(entries), exportOutput)
+
+	if exportEntities {
+		if err := writeEntityStubs(entries); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeEntityStubs creates an empty stub note under <output>/Entities for every
+// author / publication / publisher referenced by the exported entries, so the
+// ## Related [[wiki-links]] resolve (and clicking one in Obsidian never spawns
+// a blank note). Existing files are left untouched — a stub the user has since
+// annotated is never overwritten.
+func writeEntityStubs(entries []*internal.Entry) error {
+	v := vocab.Active()
+	names := map[string]bool{}
+	for _, e := range entries {
+		for _, n := range internal.EntityLinkNames(v, e) {
+			names[n] = true
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	dir := filepath.Join(exportOutput, "Entities")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	created := 0
+	for n := range names {
+		path := filepath.Join(dir, n+".md")
+		if _, err := os.Stat(path); err == nil {
+			continue // already exists — never overwrite
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.WriteFile(path, []byte("# "+n+"\n"), 0o644); err != nil {
+			return err
+		}
+		created++
+	}
+	fmt.Printf("Entities: %d stub(s) created, %d referenced, in %s\n", created, len(names), dir)
 	return nil
 }
 
@@ -121,5 +165,6 @@ func init() {
 	exportCmd.Flags().StringVar(&exportFormat, "format", "bib", "output format (md or bib)")
 	exportCmd.Flags().StringVar(&exportOutput, "output", "", "output directory (md) or file (bib)")
 	exportCmd.Flags().BoolVar(&exportIncludeMeta, "include-meta", false, "preserve bibdb-internal fields (bibdbversion) in the export")
+	exportCmd.Flags().BoolVar(&exportEntities, "entities", true, "(md) create stub notes under <output>/Entities for authors/publications/publishers so [[wiki-links]] resolve; existing files are kept")
 	rootCmd.AddCommand(exportCmd)
 }

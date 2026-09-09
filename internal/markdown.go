@@ -165,16 +165,67 @@ func entityLinkName(v *vocab.Vocabulary, raw string, reorderComma bool) string {
 	return name
 }
 
-// wikiLinkReplacer strips the characters Obsidian would treat as link syntax.
-var wikiLinkReplacer = strings.NewReplacer("[", "", "]", "", "#", "", "^", "", "|", "", "\n", " ", "\r", " ")
+// entityNameReplacer removes characters Obsidian treats as link syntax
+// ([ ] # ^ |) and characters that are illegal in a filename (/ \ : * ? " < >),
+// so the wiki-link display text is identical to the stub file's basename and
+// the link always resolves. Newlines collapse to spaces.
+var entityNameReplacer = strings.NewReplacer(
+	"[", "", "]", "", "#", "", "^", "", "|", "",
+	"/", "-", "\\", "-", ":", "-", "*", "-", "?", "-", "\"", "-", "<", "-", ">", "-",
+	"\n", " ", "\r", " ",
+)
+
+// sanitizeEntityName makes a display name safe as both wiki-link text and a
+// filename. Shared by wikiLink and EntityLinkNames so links and stub files match.
+func sanitizeEntityName(name string) string {
+	return strings.TrimSpace(entityNameReplacer.Replace(name))
+}
 
 // wikiLink wraps a display name as an Obsidian [[wiki-link]]. Returns "" empty.
 func wikiLink(name string) string {
-	name = strings.TrimSpace(wikiLinkReplacer.Replace(name))
+	name = sanitizeEntityName(name)
 	if name == "" {
 		return ""
 	}
 	return "[[" + name + "]]"
+}
+
+// EntityLinkNames returns the sanitized display names of an entry's
+// bibliographic entities (authors, publication, publisher) — exactly the names
+// wrapped in [[…]] by the ## Related section. Used by `bibdb export` to create
+// matching stub notes so those links resolve. Authors are reordered
+// "Family, Given" → "Given Family"; curated names use the prefLabel; junk
+// bylines (which get no tag) are skipped; deduped, order preserved.
+func EntityLinkNames(v *vocab.Vocabulary, e *Entry) []string {
+	var names []string
+	seen := map[string]bool{}
+	add := func(raw string, reorder bool) {
+		n := sanitizeEntityName(entityLinkName(v, raw, reorder))
+		if n == "" || seen[n] {
+			return
+		}
+		seen[n] = true
+		names = append(names, n)
+	}
+	if author := stripBraces(e.Get("author")); author != "" {
+		for _, a := range strings.Split(author, " and ") {
+			if strings.TrimSpace(a) == "" || authorTag(v, a) == "" {
+				continue
+			}
+			add(a, true)
+		}
+	}
+	for _, fn := range []string{"journal", "booktitle"} {
+		if val := stripBraces(e.Get(fn)); val != "" {
+			add(val, false)
+		}
+	}
+	for _, fn := range []string{"publisher", "institution", "organization", "school"} {
+		if val := stripBraces(e.Get(fn)); val != "" {
+			add(val, false)
+		}
+	}
+	return names
 }
 
 // stripBraces removes BibTeX protective braces from display text.
