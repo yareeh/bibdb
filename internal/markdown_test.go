@@ -3,6 +3,8 @@ package internal
 import (
 	"strings"
 	"testing"
+
+	"github.com/yareeh/bibdb/internal/vocab"
 )
 
 func TestFormatMarkdown(t *testing.T) {
@@ -125,5 +127,41 @@ func TestToTagStripsObsidianUnsafeChars(t *testing.T) {
 		if got != c.want {
 			t.Errorf("toTag(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestFormatMarkdownDedupsTags(t *testing.T) {
+	// Distinct keywords that normalize to the same tag must not repeat it.
+	// Mr T, his real name and his A-Team character all map to #person/mr-t.
+	yaml := `
+scheme:
+  facets: [top, topic, person]
+  defaultFacet: topic
+concepts:
+  - {id: mr-t, prefLabel: Mr T, facet: person, altLabel: [Lawrence Tureaud, BA Baracus]}
+`
+	v, err := vocab.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("parse vocab: %v", err)
+	}
+	vocab.SetActive(v)
+	defer vocab.SetActive(nil)
+
+	e := &Entry{
+		Type: "article",
+		Key:  "hattenstone2026idont",
+		Fields: []Field{
+			{Name: "author", Value: "Hattenstone, Simon"},
+			{Name: "title", Value: "The hidden life of Mr T"},
+			{Name: "keywords", Value: "Mr T, Lawrence Tureaud, BA Baracus, personal narrative"},
+		},
+	}
+
+	md := FormatMarkdown(e)
+	if n := strings.Count(md, "#person/mr-t"); n != 1 {
+		t.Errorf("expected #person/mr-t exactly once, got %d\n%s", n, md)
+	}
+	if !strings.Contains(md, "#personal-narrative") {
+		t.Errorf("distinct keyword should still be tagged:\n%s", md)
 	}
 }

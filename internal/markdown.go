@@ -102,28 +102,37 @@ func FormatMarkdown(e *Entry) string {
 	}
 
 	if kw := e.Get("keywords"); kw != "" {
-		b.WriteString("## Keywords\n\n")
 		v := vocab.Active()
-		first := true
+		var tags []string
+		seen := make(map[string]bool)
 		for _, p := range strings.Split(kw, ",") {
 			if strings.TrimSpace(p) == "" {
 				continue
 			}
-			if !first {
-				b.WriteString(" ")
-			}
-			first = false
 			// With a taxonomy loaded, entity facets get a "<facet>/" prefix so
 			// places, people, orgs and genres become nested Obsidian tags
 			// (#place/iran) and stay out of the topic tag tree. Without one,
 			// the keyword is tagged verbatim (pre-taxonomy behavior).
+			var tag string
 			if v != nil {
-				b.WriteString(toTag(v.TagPath(p)))
+				tag = toTag(v.TagPath(p))
 			} else {
-				b.WriteString(toTag(p))
+				tag = toTag(p)
 			}
+			// Dedup: distinct keywords can normalize to the same tag — e.g.
+			// "Mr T", "Lawrence Tureaud" and "BA Baracus" all map to
+			// #person/mr-t. Keep the first occurrence only.
+			if tag == "#" || seen[tag] {
+				continue
+			}
+			seen[tag] = true
+			tags = append(tags, tag)
 		}
-		b.WriteString("\n\n")
+		if len(tags) > 0 {
+			b.WriteString("## Keywords\n\n")
+			b.WriteString(strings.Join(tags, " "))
+			b.WriteString("\n\n")
+		}
 	}
 
 	if abs := e.Get("abstract"); abs != "" {
