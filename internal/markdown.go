@@ -121,6 +121,62 @@ func authorTag(v *vocab.Vocabulary, author string) string {
 	return slug // single-word, uncurated, no signal → flat
 }
 
+// orgFacetTag renders a publication/publisher name as an #org/ facet tag,
+// resolving through the vocabulary to a curated concept's canonical tag when
+// known. Returns "" for an empty name.
+func orgFacetTag(v *vocab.Vocabulary, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	if v != nil {
+		if _, ok := v.Lookup(name); ok {
+			if t := toTag(v.TagPath(name)); t != "#" {
+				return t
+			}
+		}
+	}
+	s := toTag(name)
+	if s == "#" {
+		return ""
+	}
+	return "#org/" + s[1:]
+}
+
+// entityLinkName returns the display name for an entity's [[wiki-link]]: the
+// curated prefLabel when known, else the raw name. Author names ("Family,
+// Given") are reordered to "Given Family" when reorderComma is set.
+func entityLinkName(v *vocab.Vocabulary, raw string, reorderComma bool) string {
+	name := strings.TrimSpace(stripBraces(raw))
+	if reorderComma {
+		if i := strings.Index(name, ","); i >= 0 {
+			family := strings.TrimSpace(name[:i])
+			given := strings.TrimSpace(name[i+1:])
+			if family != "" && given != "" {
+				name = given + " " + family
+			}
+		}
+	}
+	if v != nil {
+		if canon, ok := v.Canonical(name); ok {
+			name = canon
+		}
+	}
+	return name
+}
+
+// wikiLinkReplacer strips the characters Obsidian would treat as link syntax.
+var wikiLinkReplacer = strings.NewReplacer("[", "", "]", "", "#", "", "^", "", "|", "", "\n", " ", "\r", " ")
+
+// wikiLink wraps a display name as an Obsidian [[wiki-link]]. Returns "" empty.
+func wikiLink(name string) string {
+	name = strings.TrimSpace(wikiLinkReplacer.Replace(name))
+	if name == "" {
+		return ""
+	}
+	return "[[" + name + "]]"
+}
+
 // stripBraces removes BibTeX protective braces from display text.
 // "{Scientific}" -> "Scientific", "{{Wikipedia contributors}}" -> "Wikipedia contributors"
 func stripBraces(s string) string {
@@ -142,22 +198,50 @@ func FormatMarkdown(e *Entry) string {
 	title := stripBraces(e.Get("title"))
 
 	fmt.Fprintf(&b, "# %s: %s\n\n", author, title)
+
+	// Bibliographic entities — authors, publication, publisher — are emitted
+	// both as facet tags (line below the title) and as [[wiki-links]] in a
+	// ## Related section. The tag converges roles (an entity that is an author
+	// here and a subject keyword elsewhere shares one #person/ or #org/ tag);
+	// the link gives Obsidian backlinks + a graph node for "all items by/from
+	// this entity". Collected here, tags rendered now, links after the table.
+	v := vocab.Active()
+	var entTags, entLinks []string
+	seenTag := map[string]bool{}
+	seenLink := map[string]bool{}
+	addEntity := func(tag, link string) {
+		if tag != "" && !seenTag[tag] {
+			seenTag[tag] = true
+			entTags = append(entTags, tag)
+		}
+		if link != "" && !seenLink[link] {
+			seenLink[link] = true
+			entLinks = append(entLinks, link)
+		}
+	}
 	if author != "" {
-		v := vocab.Active()
-		var atags []string
-		seen := make(map[string]bool)
 		for _, a := range strings.Split(author, " and ") {
-			tag := authorTag(v, a)
-			if tag == "" || seen[tag] {
+			if strings.TrimSpace(a) == "" {
 				continue
 			}
-			seen[tag] = true
-			atags = append(atags, tag)
+			if tag := authorTag(v, a); tag != "" {
+				addEntity(tag, wikiLink(entityLinkName(v, a, true)))
+			}
 		}
-		if len(atags) > 0 {
-			b.WriteString(strings.Join(atags, " "))
-			b.WriteString("\n\n")
+	}
+	for _, fn := range []string{"journal", "booktitle"} { // publications
+		if val := stripBraces(e.Get(fn)); val != "" {
+			addEntity(orgFacetTag(v, val), wikiLink(entityLinkName(v, val, false)))
 		}
+	}
+	for _, fn := range []string{"publisher", "institution", "organization", "school"} {
+		if val := stripBraces(e.Get(fn)); val != "" {
+			addEntity(orgFacetTag(v, val), wikiLink(entityLinkName(v, val, false)))
+		}
+	}
+	if len(entTags) > 0 {
+		b.WriteString(strings.Join(entTags, " "))
+		b.WriteString("\n\n")
 	}
 	fmt.Fprintf(&b, "**Key:** %s\n", e.Key)
 	fmt.Fprintf(&b, "**Type:** %s\n", e.Type)
@@ -189,6 +273,14 @@ func FormatMarkdown(e *Entry) string {
 			fmt.Fprintf(&b, "| %s | %s |\n", f.Name, stripBraces(f.Value))
 		}
 		b.WriteString("\n")
+	}
+
+	// Wiki-links to the bibliographic entities → Obsidian backlinks give
+	// "all items by/from this author/publication/publisher".
+	if len(entLinks) > 0 {
+		b.WriteString("## Related\n\n")
+		b.WriteString(strings.Join(entLinks, " · "))
+		b.WriteString("\n\n")
 	}
 
 	if kw := e.Get("keywords"); kw != "" {

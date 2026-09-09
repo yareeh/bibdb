@@ -249,3 +249,101 @@ concepts:
 		}
 	}
 }
+
+func TestWikiLink(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"The Guardian", "[[The Guardian]]"},
+		{"Le Monde", "[[Le Monde]]"},
+		{"", ""},
+		{"  ", ""},
+		{"Weird [Name] #x |y", "[[Weird Name x y]]"}, // link-breaking chars stripped
+	}
+	for _, c := range cases {
+		if got := wikiLink(c.in); got != c.want {
+			t.Errorf("wikiLink(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestFormatMarkdownRelatedSection(t *testing.T) {
+	v, err := vocab.Parse([]byte(`
+scheme:
+  facets: [top, person, org]
+  defaultFacet: topic
+concepts:
+  - {id: donald-trump, prefLabel: Donald Trump, facet: person, altLabel: [Trump]}
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	vocab.SetActive(v)
+	defer vocab.SetActive(nil)
+
+	e := &Entry{
+		Type: "article",
+		Key:  "hattenstone2026idont",
+		Fields: []Field{
+			{Name: "author", Value: "Hattenstone, Simon"},
+			{Name: "title", Value: "The hidden life of Mr T"},
+			{Name: "journal", Value: "The Guardian"},
+			{Name: "keywords", Value: "social sciences"},
+		},
+	}
+	md := FormatMarkdown(e)
+
+	// Entity facet tags (line below title): author person + publication org.
+	if !strings.Contains(md, "#person/simon-hattenstone") {
+		t.Errorf("missing author facet tag:\n%s", md)
+	}
+	if !strings.Contains(md, "#org/the-guardian") {
+		t.Errorf("missing publication facet tag:\n%s", md)
+	}
+	// ## Related wiki-links for backlink navigation.
+	if !strings.Contains(md, "## Related") {
+		t.Errorf("missing Related section:\n%s", md)
+	}
+	if !strings.Contains(md, "[[Simon Hattenstone]]") {
+		t.Errorf("missing author wiki-link (reordered):\n%s", md)
+	}
+	if !strings.Contains(md, "[[The Guardian]]") {
+		t.Errorf("missing publication wiki-link:\n%s", md)
+	}
+}
+
+func TestFormatMarkdownCuratedEntityLinkAndDedup(t *testing.T) {
+	v, err := vocab.Parse([]byte(`
+scheme:
+  facets: [top, person, org]
+  defaultFacet: topic
+concepts:
+  - {id: donald-trump, prefLabel: Donald Trump, facet: person, altLabel: [Trump]}
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	vocab.SetActive(v)
+	defer vocab.SetActive(nil)
+
+	// Curated author "Trump, Donald" → canonical [[Donald Trump]] link + tag.
+	// Publisher equals a repeated org → deduped in both tags and links.
+	e := &Entry{
+		Type: "book",
+		Key:  "trump2024",
+		Fields: []Field{
+			{Name: "author", Value: "Trump, Donald"},
+			{Name: "title", Value: "A Book"},
+			{Name: "publisher", Value: "Penguin"},
+			{Name: "institution", Value: "Penguin"},
+		},
+	}
+	md := FormatMarkdown(e)
+	if !strings.Contains(md, "[[Donald Trump]]") || !strings.Contains(md, "#person/donald-trump") {
+		t.Errorf("curated author should link/tag canonically:\n%s", md)
+	}
+	if n := strings.Count(md, "[[Penguin]]"); n != 1 {
+		t.Errorf("repeated org should dedup to one link, got %d:\n%s", n, md)
+	}
+	if n := strings.Count(md, "#org/penguin"); n != 1 {
+		t.Errorf("repeated org should dedup to one tag, got %d:\n%s", n, md)
+	}
+}
