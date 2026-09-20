@@ -73,7 +73,7 @@ func KeywordTags(v *vocab.Vocabulary, keywords string) []string {
 // #org/ rather than mislabeled a person. Deliberately excludes role words
 // (editor, staff, reporter) and surnames that collide with outlet words (e.g.
 // the Finnish surname "Lehti") — those are handled as persons.
-var authorOrgRe = regexp.MustCompile(`(?i)\b(times|news|post|press|media|agency|university|institute|sanomat|uutiset|monde|bloomberg|reuters|guardian|bbc|cnn|nbc|vox|axios|politico|magazine|journal|newsroom|alphaville|substack|wikipedia|encyclopedia|wire|ministry|department|council|foundation|association|committee|company|corp|inc|ltd|llc|studios?|productions?|records)\b|wall\s+street|big\s+think|prof\s+g|\bft\b`)
+var authorOrgRe = regexp.MustCompile(`(?i)\b(times|news|post|press|media|agency|university|institute|sanomat|uutiset|monde|bloomberg|reuters|guardian|bbc|cnn|nbc|vox|axios|politico|magazine|journal|newsroom|alphaville|substack|wikipedia|encyclopedia|wire|ministry|department|council|foundation|association|committee|company|corp|inc|ltd|llc|studios?|productions?|records)\b|wall\s+street|big\s+think|prof\s+g|\bft\b|usa\s+today|der\s+spiegel`)
 
 // authorJunkRe matches non-byline noise ("(No specific author listed…)",
 // strings with digits or parentheses) that should not become a tag at all.

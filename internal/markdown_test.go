@@ -291,6 +291,12 @@ concepts:
 		{"org Big Think", "Big Think", nil, "#org/big-think"},
 		{"org HS", "Helsingin Sanomat", nil, "#org/helsingin-sanomat"},
 		{"org Wikipedia", "Wikipedia contributors", nil, "#org/wikipedia-contributors"},
+		// Publications the LLM sometimes emits as author (proper nouns whose
+		// component words aren't in the outlet-signal list). skyebot #243
+		// shipped `author = {USA TODAY}`; #242 shipped `author = {Der Spiegel}`.
+		{"org USA TODAY", "USA TODAY", nil, "#org/usa-today"},
+		{"org USA Today", "USA Today", nil, "#org/usa-today"},
+		{"org Der Spiegel", "Der Spiegel", nil, "#org/der-spiegel"},
 		// --- junk bylines -> no tag ---
 		{"junk parenthetical", "(No specific author listed in the provided text)", nil, ""},
 		{"empty", "", nil, ""},
