@@ -106,6 +106,63 @@ func TestFormatMarkdownMultipleAuthors(t *testing.T) {
 	}
 }
 
+func TestFormatMarkdownInterviewees(t *testing.T) {
+	// Interviewees are people quoted as subjects of the article, distinct
+	// from the author (interviewer). They must render on the same #person/
+	// tag row as authors and get [[wiki-links]] in ## Related so Obsidian
+	// backlinks resolve. (skyebot #242.)
+	e := &Entry{
+		Type: "article",
+		Key:  "becker2026",
+		Fields: []Field{
+			{Name: "author", Value: "Becker, Tobias"},
+			{Name: "title", Value: "Interview with a philosopher"},
+			{Name: "year", Value: "2026"},
+			{Name: "interviewees", Value: "Svenja Flaßpöhler and Slavoj Žižek"},
+		},
+	}
+
+	md := FormatMarkdown(e)
+
+	wanted := []string{
+		"#person/tobias-becker",
+		"#person/svenja-flaßpöhler",
+		"#person/slavoj-žižek",
+		"[[Svenja Flaßpöhler]]",
+		"[[Slavoj Žižek]]",
+	}
+	for _, w := range wanted {
+		if !strings.Contains(md, w) {
+			t.Errorf("missing %q in markdown output:\n%s", w, md)
+		}
+	}
+
+	if strings.Contains(md, "| interviewees |") {
+		t.Errorf("interviewees should be consumed by person-tag rendering, not shown in table:\n%s", md)
+	}
+}
+
+func TestEntityLinkNamesIncludesInterviewees(t *testing.T) {
+	// bibdb export creates stub Entities/*.md files from EntityLinkNames
+	// so [[wiki-links]] resolve; interviewees must feed that list.
+	e := &Entry{
+		Type: "article",
+		Fields: []Field{
+			{Name: "author", Value: "Becker, Tobias"},
+			{Name: "title", Value: "Interview"},
+			{Name: "interviewees", Value: "Svenja Flaßpöhler"},
+		},
+	}
+	got := EntityLinkNames(nil, e)
+	want := map[string]bool{"Tobias Becker": true, "Svenja Flaßpöhler": true}
+	for _, n := range got {
+		delete(want, n)
+	}
+	if len(want) > 0 {
+		t.Errorf("EntityLinkNames missing entries %v; got %v", want, got)
+	}
+}
+
 func TestToTagStripsObsidianUnsafeChars(t *testing.T) {
 	// Obsidian tags accept letters, digits, '-', '_', '/'. Any other punctuation
 	// truncates the tag at the bad char when rendered, so toTag must strip them.

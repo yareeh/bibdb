@@ -225,6 +225,17 @@ func EntityLinkNames(v *vocab.Vocabulary, e *Entry) []string {
 			add(val, false)
 		}
 	}
+	// Interviewees (skyebot #242): each named subject gets its own
+	// [[wiki-link]] + stub note, same as authors, so Obsidian resolves
+	// backlinks to every article featuring that person.
+	if iv := stripBraces(e.Get("interviewees")); iv != "" {
+		for _, name := range strings.Split(iv, " and ") {
+			if strings.TrimSpace(name) == "" || authorTag(v, name) == "" {
+				continue
+			}
+			add(name, false)
+		}
+	}
 	return names
 }
 
@@ -290,6 +301,20 @@ func FormatMarkdown(e *Entry) string {
 			addEntity(orgFacetTag(v, val), wikiLink(entityLinkName(v, val, false)))
 		}
 	}
+	// Interviewees — people quoted as the subject of an interview, distinct
+	// from the author (interviewer). Same convergence rule as authors: they
+	// share the #person/ tag namespace and get [[wiki-links]] in ## Related
+	// so Obsidian can backlink "all items about this person" (skyebot #242).
+	if iv := stripBraces(e.Get("interviewees")); iv != "" {
+		for _, name := range strings.Split(iv, " and ") {
+			if strings.TrimSpace(name) == "" {
+				continue
+			}
+			if tag := authorTag(v, name); tag != "" {
+				addEntity(tag, wikiLink(entityLinkName(v, name, false)))
+			}
+		}
+	}
 	if len(entTags) > 0 {
 		b.WriteString(strings.Join(entTags, " "))
 		b.WriteString("\n\n")
@@ -308,6 +333,10 @@ func FormatMarkdown(e *Entry) string {
 	skipFields := map[string]bool{
 		"author": true, "title": true, "year": true, "month": true,
 		"keywords": true, "abstract": true, "url": true, "doi": true,
+		// Already surfaced above as a #person/ tag on the entity row —
+		// leaving it in the table too would duplicate the info and invite
+		// drift when someone edits one place without the other (#242).
+		"interviewees": true,
 	}
 
 	var tableFields []Field
