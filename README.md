@@ -89,6 +89,23 @@ backends:
 
 Select backend: `--backend work` flag or `BIBDB_BACKEND=work` env var.
 
+### GitHub credentials without an ssh agent
+
+For hosts where the ssh / signing agent (1Password, ssh-agent) is unreachable, a backend can carry a GitHub personal access token:
+
+```yaml
+backends:
+  personal:
+    path: ~/bibdata
+    pat_file: ~/.config/bibdb/pat   # file holding the token (preferred); or `pat: ghp_...`
+    unsigned: true                  # commit without signing (a PAT cannot sign)
+```
+
+- Token lookup: `pat`, else the contents of `pat_file`, else `$BIBDB_PAT`.
+- Pull and push use it as HTTPS basic auth for `github.com`; `git@github.com:` / `ssh://git@github.com/` remotes are rewritten to https for those calls only. It is passed to git through `GIT_CONFIG_*` environment variables, so it is not in the process list, `.git/config` or the remote URL. Git never prompts.
+- `unsigned: true` sets `commit.gpgsign=false` for bibdb's own commits only. Without it, commits follow your git config (signing included).
+- Needs a fine-grained or classic token with write access to the data repo's contents.
+
 ## Connecting to an Existing Remote
 
 To use a bibdb data repo that already exists on a remote (e.g., a colleague's or your own from another machine):

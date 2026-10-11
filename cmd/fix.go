@@ -84,7 +84,7 @@ func runFix(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading taxonomy: %w", err)
 	}
 	store := internal.NewStore(backend.Path)
-	repo := internal.NewRepo(backend.Path)
+	repo := internal.NewRepoFor(*backend)
 
 	var entries []*internal.Entry
 	if fixAll {

@@ -12,6 +12,17 @@ type Backend struct {
 	Path   string `yaml:"path"`
 	Remote string `yaml:"remote"`
 	Branch string `yaml:"branch"`
+
+	// Pat is a GitHub personal access token used for pull and push instead of the
+	// ssh agent. PatFile names a file holding it (preferred: keeps the token out of
+	// the config); BIBDB_PAT is the fallback. SSH GitHub remotes are rewritten to
+	// https for the call; the repo's own remote and config are left alone.
+	Pat     string `yaml:"pat,omitempty"`
+	PatFile string `yaml:"pat_file,omitempty"`
+
+	// Unsigned makes bibdb's commits with commit.gpgsign=false, for hosts where the
+	// signing agent is unreachable (a PAT cannot sign).
+	Unsigned bool `yaml:"unsigned,omitempty"`
 }
 
 type Config struct {
@@ -48,6 +59,7 @@ func LoadConfig() (*Config, error) {
 	// Expand ~ in paths
 	for name, b := range cfg.Backends {
 		b.Path = expandHome(b.Path)
+		b.PatFile = expandHome(b.PatFile)
 		cfg.Backends[name] = b
 	}
 
