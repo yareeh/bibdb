@@ -26,7 +26,7 @@ var updateFieldsCmd = &cobra.Command{
 
 		key := args[0]
 		store := internal.NewStore(backend.Path)
-		repo := internal.NewRepo(backend.Path)
+		repo := internal.NewRepoFor(*backend)
 
 		if !store.Exists(key) {
 			return fmt.Errorf("entry %q not found", key)

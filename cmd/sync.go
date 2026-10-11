@@ -16,7 +16,7 @@ var syncCmd = &cobra.Command{
 			return err
 		}
 
-		repo := internal.NewRepo(backend.Path)
+		repo := internal.NewRepoFor(*backend)
 		if err := repo.Sync(); err != nil {
 			return err
 		}

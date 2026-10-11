@@ -23,7 +23,7 @@ var renameCmd = &cobra.Command{
 			return err
 		}
 		store := internal.NewStore(backend.Path)
-		repo := internal.NewRepo(backend.Path)
+		repo := internal.NewRepoFor(*backend)
 
 		entry, err := store.Read(oldKey)
 		if err != nil {

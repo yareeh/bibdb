@@ -30,7 +30,7 @@ Or use flags:
 		}
 
 		store := internal.NewStore(backend.Path)
-		repo := internal.NewRepo(backend.Path)
+		repo := internal.NewRepoFor(*backend)
 
 		var entry *internal.Entry
 

@@ -30,7 +30,7 @@ var importCmd = &cobra.Command{
 		}
 
 		store := internal.NewStore(backend.Path)
-		repo := internal.NewRepo(backend.Path)
+		repo := internal.NewRepoFor(*backend)
 
 		repo.Pull()
 
